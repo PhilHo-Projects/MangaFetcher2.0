@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MANGA TRACKER</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="title">MANGA TRACKER</h1>
+      <div class="header-line"></div>
+    </header>
+
+    <!-- Search Section -->
+    <section class="search-section">
+      <h2 class="section-title">SEARCH</h2>
+      <div class="search-bar">
+        <input 
+          type="text" 
+          id="search-input" 
+          class="search-input" 
+          placeholder="Enter manga title..."
+        >
+        <button onclick="searchManga()" class="btn btn-primary">SEARCH</button>
+      </div>
+      <div id="search-results" class="search-results"></div>
+    </section>
+
+    <!-- Tracked Manga Section -->
+    <section class="tracked-section">
+      <h2 class="section-title">YOUR LIBRARY</h2>
+      <div id="manga-list" class="manga-grid"></div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

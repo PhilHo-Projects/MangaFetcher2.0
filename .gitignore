@@ -1,0 +1,6 @@
+node_modules/
+tracks.json
+*.log
+.env
+data/tracks.json
+public/uploads/
