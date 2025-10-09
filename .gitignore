@@ -1,6 +1,28 @@
+# Dependencies
 node_modules/
-tracks.json
+
+# Database files (SQLite)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
 *.log
+npm-debug.log*
+
+# Environment variables
 .env
-data/tracks.json
+
+# User uploads
 public/uploads/
+
+# Legacy/Example files
+tracks.json
+Examples/
+
+# OS files
+.DS_Store
+Thumbs.db

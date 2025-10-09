@@ -1,0 +1,847 @@
+/* ================================
+   BRUTALIST CLEAN MANGA TRACKER
+   ================================ */
+
+/* CSS Reset & Base */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--white);
+}
+
+:root {
+  --black: #0a0a0a;
+  --white: #ffffff;
+  --gray-bg: #F9F5EA;
+  --gray-light: #e5e5e5;
+  --accent: #ff0040;
+  --accent-hover: #cc0033;
+  --success: #22c55e;
+  --success-dark: #16a34a;
+  --yellow: #fde047;
+  --blue: #3b82f6;
+  --border-thick: 4px;
+  --border-medium: 3px;
+  --border-thin: 2px;
+}
+
+body {
+  font-family: 'IBM Plex Mono', monospace;
+  background: var(--gray-bg);
+  color: var(--black);
+  line-height: 1.6;
+  letter-spacing: 0.5px;
+  animation: fadeIn 0.5s ease-in;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  animation: slideDown 0.6s ease-out;
+}
+
+/* ================================
+   HEADER
+   ================================ */
+
+.header {
+  margin-bottom: 60px;
+}
+
+.title {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 64px;
+  font-weight: normal;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  line-height: 1;
+  color: var(--black);
+  animation: titleSlide 0.8s ease-out;
+}
+
+.header-line {
+  width: 100%;
+  height: var(--border-thick);
+  background: linear-gradient(90deg, var(--accent) 0%, var(--black) 50%, var(--accent) 100%);
+  animation: lineExpand 1s ease-out;
+}
+
+/* ================================
+   SECTIONS
+   ================================ */
+
+.section-title {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 28px;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: var(--border-medium) solid var(--black);
+}
+
+.search-section {
+  margin-bottom: 60px;
+}
+
+.tracked-section {
+  margin-bottom: 40px;
+}
+
+.library-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  gap: 20px;
+}
+
+.library-header .section-title {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.library-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.next-check-timer {
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 16px;
+  border: var(--border-medium) solid var(--black);
+  background: var(--white);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.next-check-timer #timer-display {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.btn-refresh {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--border-medium) solid var(--black);
+  background: var(--accent);
+  color: var(--white);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 4px 4px 0 var(--black);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.btn-refresh:hover {
+  box-shadow: 3px 3px 0 var(--black);
+  transform: translate(1px, 1px);
+}
+
+.btn-refresh:active {
+  box-shadow: 2px 2px 0 var(--black);
+  transform: translate(2px, 2px);
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: 4px 4px 0 var(--black) !important;
+}
+
+.refresh-icon {
+  font-size: 24px;
+  font-weight: bold;
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+.btn-refresh:hover .refresh-icon {
+  transform: rotate(180deg);
+}
+
+.btn-refresh.refreshing .refresh-icon {
+  animation: spin 1s linear infinite;
+}
+
+/* ================================
+   SEARCH BAR
+   ================================ */
+
+.search-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+.search-input {
+  flex: 1;
+  padding: 16px 20px;
+  font-size: 16px;
+  font-weight: 500;
+  border: var(--border-medium) solid var(--black);
+  background-color: var(--white);
+  outline: none;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.search-input::placeholder {
+  color: #999;
+  text-transform: none;
+  font-weight: 400;
+}
+
+.search-input:focus {
+  outline: var(--border-medium) solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* ================================
+   BUTTONS
+   ================================ */
+
+.btn {
+  padding: 16px 32px;
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border: var(--border-medium) solid var(--black);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: var(--white);
+  color: var(--black);
+  font-family: 'IBM Plex Mono', monospace;
+  box-shadow: 6px 6px 0 var(--black);
+}
+
+.btn-primary {
+  background-color: var(--accent);
+  color: var(--white);
+  border-color: var(--black);
+}
+
+.btn-primary:hover {
+  box-shadow: 4px 4px 0 var(--black);
+  transform: translate(2px, 2px);
+}
+
+.btn-primary:active {
+  box-shadow: 2px 2px 0 var(--black);
+  transform: translate(4px, 4px);
+}
+
+.btn-secondary {
+  background-color: var(--white);
+  color: var(--black);
+}
+
+.btn-secondary:hover {
+  box-shadow: 4px 4px 0 var(--black);
+  transform: translate(2px, 2px);
+}
+
+.btn-secondary:active {
+  box-shadow: 2px 2px 0 var(--black);
+  transform: translate(4px, 4px);
+}
+
+.btn-small {
+  padding: 8px 16px;
+  font-size: 12px;
+  border-width: var(--border-medium);
+  box-shadow: 3px 3px 0 var(--black);
+}
+
+.btn-small:hover {
+  box-shadow: 2px 2px 0 var(--black);
+  transform: translate(1px, 1px);
+}
+
+.btn-small:active {
+  box-shadow: 1px 1px 0 var(--black);
+  transform: translate(2px, 2px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.btn-read-status {
+  background: var(--success) !important;
+  color: var(--white) !important;
+  border-color: var(--black) !important;
+  cursor: pointer !important;
+  opacity: 1 !important;
+  box-shadow: 3px 3px 0 var(--black) !important;
+}
+
+.btn-read-status:hover {
+  background: var(--success-dark) !important;
+  box-shadow: 2px 2px 0 var(--black) !important;
+  transform: translate(1px, 1px) !important;
+}
+
+.btn-read-status:active {
+  box-shadow: 1px 1px 0 var(--black) !important;
+  transform: translate(2px, 2px) !important;
+}
+
+.btn-unmark {
+  background: var(--white);
+  color: var(--black);
+  border-color: var(--black);
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  box-shadow: 3px 3px 0 var(--black);
+}
+
+.btn-unmark:hover {
+  background: var(--accent);
+  color: var(--white);
+  box-shadow: 2px 2px 0 var(--black);
+  transform: translate(1px, 1px);
+}
+
+.btn-unmark:active {
+  box-shadow: 1px 1px 0 var(--black);
+  transform: translate(2px, 2px);
+}
+
+/* ================================
+   SEARCH RESULTS
+   ================================ */
+
+.search-results {
+  display: grid;
+  gap: 12px;
+}
+
+.search-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border: var(--border-medium) solid var(--black);
+  background-color: var(--white);
+  transition: all 0.2s ease;
+  box-shadow: 6px 6px 0 var(--black);
+  animation: slideInLeft 0.4s ease-out forwards;
+  opacity: 0;
+}
+
+.search-result-item:nth-child(1) { animation-delay: 0.05s; }
+.search-result-item:nth-child(2) { animation-delay: 0.1s; }
+.search-result-item:nth-child(3) { animation-delay: 0.15s; }
+.search-result-item:nth-child(4) { animation-delay: 0.2s; }
+.search-result-item:nth-child(5) { animation-delay: 0.25s; }
+
+.search-result-item:hover {
+  box-shadow: 4px 4px 0 var(--black);
+  transform: translate(2px, 2px);
+}
+
+.search-result-item:active {
+  box-shadow: 2px 2px 0 var(--black);
+  transform: translate(4px, 4px);
+}
+
+.search-result-title {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+/* ================================
+   MANGA GRID
+   ================================ */
+
+.manga-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 24px;
+}
+
+.manga-card {
+  border: var(--border-medium) solid var(--black);
+  background-color: var(--white);
+  padding: 0;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  animation: cardFadeIn 0.5s ease-out backwards;
+}
+
+.manga-card:nth-child(1) { animation-delay: 0.1s; }
+.manga-card:nth-child(2) { animation-delay: 0.2s; }
+.manga-card:nth-child(3) { animation-delay: 0.3s; }
+.manga-card:nth-child(4) { animation-delay: 0.4s; }
+.manga-card:nth-child(5) { animation-delay: 0.5s; }
+.manga-card:nth-child(6) { animation-delay: 0.6s; }
+
+.manga-header {
+  padding: 20px;
+  background: var(--black);
+  color: var(--white);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 15px;
+  border-bottom: var(--border-medium) solid var(--black);
+  min-height: 70px;
+}
+
+.manga-title {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 24px;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  line-height: 1.2;
+  flex: 1;
+  word-break: break-word;
+}
+
+.manga-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.unread-badge {
+  background: var(--accent);
+  color: var(--black);
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: var(--border-medium) solid var(--white);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  white-space: nowrap;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.btn-remove {
+  background: var(--white);
+  color: var(--black);
+  border: var(--border-medium) solid var(--black);
+  padding: 6px 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+  box-shadow: none;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.btn-remove:hover {
+  background: var(--accent);
+  color: var(--white);
+  border-color: var(--black);
+  box-shadow: none;
+  transform: none;
+}
+
+.btn-remove:active {
+  box-shadow: none;
+  transform: none;
+}
+
+/* ================================
+   CHAPTER LIST
+   ================================ */
+
+.chapter-list {
+  padding: 0;
+}
+
+.chapter-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: var(--border-medium) solid var(--gray-light);
+  transition: all 0.2s ease;
+  background: var(--white);
+}
+
+.chapter-item:last-child {
+  border-bottom: none;
+}
+
+.chapter-item:hover {
+  background: var(--gray-bg);
+}
+
+.chapter-item.chapter-read {
+  background: #e8f5e9;
+}
+
+.chapter-item.chapter-read:hover {
+  background: #c8e6c9;
+}
+
+.chapter-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chapter-number {
+  font-weight: 700;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chapter-link {
+  font-weight: 700;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-decoration: none;
+  color: var(--black);
+  padding: 10px 16px;
+  border: var(--border-medium) solid var(--black);
+  background: var(--white);
+  transition: all 0.2s ease;
+  display: inline-block;
+  position: relative;
+  box-shadow: 3px 3px 0 var(--black);
+}
+
+.chapter-link::after {
+  content: '→';
+  margin-left: 10px;
+  opacity: 0;
+  transform: translateX(-10px);
+  transition: all 0.2s ease;
+}
+
+.chapter-link:hover {
+  color: var(--white);
+  background: var(--accent);
+  box-shadow: 2px 2px 0 var(--black);
+  transform: translate(1px, 1px);
+}
+
+.chapter-link:hover::after {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.chapter-link:active {
+  box-shadow: 1px 1px 0 var(--black);
+  transform: translate(2px, 2px);
+}
+
+.chapter-read .chapter-link {
+  border-color: var(--black);
+  background: var(--white);
+  color: var(--success-dark);
+}
+
+.chapter-read .chapter-link:hover {
+  background: var(--success);
+  color: var(--white);
+}
+
+/* ================================
+   EMPTY STATES
+   ================================ */
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  border: var(--border-medium) dashed var(--black);
+  color: var(--black);
+  background: var(--gray-bg);
+  font-weight: 500;
+}
+
+.empty-state-text {
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* ================================
+   RESPONSIVE
+   ================================ */
+
+@media (max-width: 768px) {
+  .title {
+    font-size: 48px;
+  }
+  
+  .section-title {
+    font-size: 24px;
+  }
+  
+  .manga-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .search-bar {
+    flex-direction: column;
+  }
+  
+  .search-input {
+    border-right: var(--border-thick) solid var(--black);
+    border-bottom: none;
+  }
+  
+  .btn {
+    width: 100%;
+  }
+  
+  .library-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .library-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .next-check-timer {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+}
+
+/* ================================
+   OPTIONAL: BACKGROUND IMAGE
+   ================================ */
+
+/* ================================
+   ANIMATIONS
+   ================================ */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes titleSlide {
+  from {
+    opacity: 0;
+    transform: translateX(-50px);
+    letter-spacing: 0.2em;
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    letter-spacing: -0.03em;
+  }
+}
+
+@keyframes lineExpand {
+  from {
+    width: 0;
+    opacity: 0;
+  }
+  to {
+    width: 100%;
+    opacity: 1;
+  }
+}
+
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 0, 64, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 0, 64, 0.6), 0 0 40px rgba(255, 0, 64, 0.4);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: translate(-3px, -3px) scale(1);
+  }
+  50% {
+    transform: translate(-3px, -3px) scale(1.05);
+  }
+}
+
+/* Loading animation */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top-color: var(--accent);
+  animation: spin 1s linear infinite;
+}
+
+/* ================================
+   CUSTOM SCROLLBAR
+   ================================ */
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gray-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--black);
+  border: 2px solid var(--gray-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--gray-bg);
+}
+
+/* ================================
+   MODAL
+   ================================ */
+
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal-content {
+  background: var(--white);
+  border: var(--border-medium) solid var(--black);
+  padding: 40px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 8px 8px 0 var(--black);
+  animation: modalSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-title {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 28px;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 20px;
+  border-bottom: var(--border-medium) solid var(--black);
+  padding-bottom: 15px;
+}
+
+.modal-message {
+  font-size: 16px;
+  margin-bottom: 30px;
+  line-height: 1.6;
+  color: var(--black);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.modal-actions .btn {
+  flex: 1;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

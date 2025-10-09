@@ -59,6 +59,13 @@ try {
   `);
   
   console.log('Database tables initialized');
+  
+  // Ensure default user exists (for single-user app)
+  const defaultUser = db.prepare('SELECT * FROM users WHERE id = 1').get();
+  if (!defaultUser) {
+    db.prepare('INSERT INTO users (id, username) VALUES (1, ?)').run('default_user');
+    console.log('Created default user (ID: 1)');
+  }
 } catch (error) {
   console.error('Failed to initialize database:', error);
   process.exit(1);
