@@ -1,6 +1,6 @@
 // app.js
 // Detect base path from current location
-const BASE_PATH = window.location.pathname.split('/').slice(0, -1).join('/') || '';
+const BASE_PATH = window.location.pathname.includes('/manga-tracker') ? '/manga-tracker' : '';
 const API_URL = window.location.origin + BASE_PATH;
 
 let timerInterval = null;
