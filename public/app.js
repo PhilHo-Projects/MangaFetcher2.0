@@ -1,5 +1,7 @@
 // app.js
-const API_URL = 'http://localhost:3000';
+// Detect base path from current location
+const BASE_PATH = window.location.pathname.split('/').slice(0, -1).join('/') || '';
+const API_URL = window.location.origin + BASE_PATH;
 
 let timerInterval = null;
 

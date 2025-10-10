@@ -1,21 +1,23 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { searchManga, getLatestChapters } = require('./mangadex');
 const { trackManga, untrackManga, markChapterRead, markChapterUnread, getTrackedManga, getReadChapters } = require('./db');
 const { scheduleChapterCheck, checkForNewChapters, getNextCheckTime } = require('./scheduler');
 
 const app = express();
+const BASE_PATH = process.env.BASE_PATH || '';
+const USER_ID = 1; // Single user app
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public')); // Serve static files from public directory
+app.use(BASE_PATH, express.static('public')); // Serve static files from public directory
 
-const USER_ID = 1; // Single user app
-app.get('/health', (req, res) => {
+app.get(BASE_PATH + '/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.get('/api/search', async (req, res) => {
+app.get(BASE_PATH + '/api/search', async (req, res) => {
   try {
     const results = await searchManga(req.query.title);
     res.json(results);
@@ -25,7 +27,7 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-app.get('/api/manga/:id/chapters', async (req, res) => {
+app.get(BASE_PATH + '/api/manga/:id/chapters', async (req, res) => {
   try {
     const chapters = await getLatestChapters(req.params.id);
     res.json(chapters);
@@ -36,7 +38,7 @@ app.get('/api/manga/:id/chapters', async (req, res) => {
 });
 
 // Track a new manga
-app.post('/api/track', async (req, res) => {
+app.post(BASE_PATH + '/api/track', async (req, res) => {
   try {
     const { mangaId, title, coverUrl } = req.body;
     trackManga(USER_ID, mangaId, title, coverUrl);
@@ -48,7 +50,7 @@ app.post('/api/track', async (req, res) => {
 });
 
 // Get tracked manga with unread counts
-app.get('/api/manga', async (req, res) => {
+app.get(BASE_PATH + '/api/manga', async (req, res) => {
   try {
     const tracked = getTrackedManga(USER_ID);
     
@@ -90,7 +92,7 @@ app.get('/api/manga', async (req, res) => {
 });
 
 // Mark chapter as read
-app.post('/api/read', (req, res) => {
+app.post(BASE_PATH + '/api/read', (req, res) => {
   try {
     const { mangaId, chapterId, chapterNumber } = req.body;
     markChapterRead(USER_ID, mangaId, chapterId, chapterNumber);
@@ -102,7 +104,7 @@ app.post('/api/read', (req, res) => {
 });
 
 // Mark chapter as unread
-app.post('/api/unread', (req, res) => {
+app.post(BASE_PATH + '/api/unread', (req, res) => {
   try {
     const { chapterId } = req.body;
     markChapterUnread(USER_ID, chapterId);
@@ -114,7 +116,7 @@ app.post('/api/unread', (req, res) => {
 });
 
 // Remove manga from library
-app.delete('/api/untrack/:mangaId', (req, res) => {
+app.delete(BASE_PATH + '/api/untrack/:mangaId', (req, res) => {
   try {
     untrackManga(USER_ID, req.params.mangaId);
     res.json({ success: true });
@@ -125,7 +127,7 @@ app.delete('/api/untrack/:mangaId', (req, res) => {
 });
 
 // Manual refresh endpoint
-app.post('/api/refresh', async (req, res) => {
+app.post(BASE_PATH + '/api/refresh', async (req, res) => {
   try {
     console.log('Manual refresh triggered');
     const result = await checkForNewChapters();
@@ -137,7 +139,7 @@ app.post('/api/refresh', async (req, res) => {
 });
 
 // Get next scheduled check time
-app.get('/api/next-check', (req, res) => {
+app.get(BASE_PATH + '/api/next-check', (req, res) => {
   try {
     const nextCheck = getNextCheckTime();
     res.json({ nextCheck });
@@ -147,8 +149,11 @@ app.get('/api/next-check', (req, res) => {
   }
 });
 
-app.listen(3001, () => {
-  console.log('Server running on port 3001');
+const PORT = process.env.PORT || 3001;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Base path: ${BASE_PATH || '(root)'}`);
   
   // Start the scheduler
   scheduleChapterCheck();
