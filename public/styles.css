@@ -491,7 +491,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  gap: 12px;
+  padding: 12px 16px;
   border-bottom: var(--border-medium) solid var(--gray-light);
   transition: all 0.2s ease;
   background: var(--white);
@@ -533,13 +534,16 @@ body {
   letter-spacing: 1px;
   text-decoration: none;
   color: var(--black);
-  padding: 10px 16px;
+  padding: 8px 14px;
   border: var(--border-medium) solid var(--black);
   background: var(--white);
   transition: all 0.2s ease;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   position: relative;
   box-shadow: 3px 3px 0 var(--black);
+  flex-shrink: 0;
 }
 
 .chapter-link::after {
@@ -576,6 +580,17 @@ body {
 .chapter-read .chapter-link:hover {
   background: var(--success);
   color: var(--white);
+}
+
+.chapter-date {
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 0 4px;
 }
 
 /* ================================
@@ -855,16 +870,16 @@ body {
     opacity: 1;
     transform: translateX(0) scale(1);
     max-height: 100px;
-    padding-top: 16px;
-    padding-bottom: 16px;
+    padding-top: 12px;
+    padding-bottom: 12px;
     margin-bottom: 0;
   }
   50% {
     opacity: 0;
     transform: translateX(-30px) scale(0.95);
     max-height: 100px;
-    padding-top: 16px;
-    padding-bottom: 16px;
+    padding-top: 12px;
+    padding-bottom: 12px;
     margin-bottom: 0;
   }
   100% {

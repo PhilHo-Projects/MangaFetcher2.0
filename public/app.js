@@ -5,6 +5,16 @@ const API_URL = window.location.origin + BASE_PATH;
 
 let timerInterval = null;
 
+// Format date to MM/DD/YY
+function formatDate(dateString) {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2);
+  return `${month}/${day}/${year}`;
+}
+
 // Search manga
 async function searchManga() {
   try {
@@ -106,11 +116,14 @@ async function loadTrackedManga() {
           </div>
           <div class="chapter-list" data-manga-id="${m.manga_id}">
             ${m.chapters && m.chapters.length > 0 
-              ? m.chapters.map(ch => `
+              ? m.chapters.map(ch => {
+                  const releaseDate = formatDate(ch.attributes.publishAt || ch.attributes.createdAt);
+                  return `
                   <div class="chapter-item" data-chapter-id="${ch.id}">
                     <a href="https://mangadex.org/chapter/${ch.id}" target="_blank" rel="noopener noreferrer" class="chapter-link">
                       Chapter ${ch.attributes.chapter || 'N/A'}
                     </a>
+                    <span class="chapter-date">${releaseDate}</span>
                     <div class="chapter-actions">
                       <button class="btn-small" 
                               onclick="markRead('${m.manga_id}', '${ch.id}', '${ch.attributes.chapter || '0'}')">
@@ -118,7 +131,8 @@ async function loadTrackedManga() {
                       </button>
                     </div>
                   </div>
-                `).join('')
+                `;
+                }).join('')
               : '<div class="empty-state">All caught up!</div>'
             }
           </div>
