@@ -68,13 +68,16 @@ app.get(BASE_PATH + '/api/manga', async (req, res) => {
       const readChapters = getReadChapters(USER_ID, manga.manga_id);
       const readSet = new Set(readChapters.map(r => r.chapter_id));
       
-      // Return all chapters with read status
-      const chaptersWithStatus = chapters.slice(0, 10).map(ch => ({
+      // Filter out chapters that are marked as read
+      const unreadChapters = chapters.filter(ch => !readSet.has(ch.id));
+      
+      // Return only unread chapters (up to 10)
+      const chaptersWithStatus = unreadChapters.slice(0, 10).map(ch => ({
         ...ch,
-        isRead: readSet.has(ch.id)
+        isRead: false
       }));
       
-      const unreadCount = chaptersWithStatus.filter(ch => !ch.isRead).length;
+      const unreadCount = chaptersWithStatus.length;
       
       return {
         ...manga,

@@ -94,34 +94,28 @@ async function loadTrackedManga() {
     listDiv.innerHTML = manga.map(m => {
       const safeTitle = m.manga_title.replace(/'/g, "\\'");
       return `
-        <div class="manga-card">
+        <div class="manga-card" data-manga-id="${m.manga_id}">
           <div class="manga-header">
             <h3 class="manga-title">${m.manga_title}</h3>
             <div class="manga-header-actions">
-              <span class="unread-badge">${m.unreadCount} NEW</span>
+              <span class="unread-badge" data-manga-id="${m.manga_id}">${m.unreadCount} NEW</span>
               <button class="btn-remove" onclick="removeManga('${m.manga_id}', '${safeTitle}')" title="Remove from library">
                 ✕
               </button>
             </div>
           </div>
-          <div class="chapter-list">
+          <div class="chapter-list" data-manga-id="${m.manga_id}">
             ${m.chapters && m.chapters.length > 0 
               ? m.chapters.map(ch => `
-                  <div class="chapter-item ${ch.isRead ? 'chapter-read' : ''}">
+                  <div class="chapter-item" data-chapter-id="${ch.id}">
                     <a href="https://mangadex.org/chapter/${ch.id}" target="_blank" rel="noopener noreferrer" class="chapter-link">
                       Chapter ${ch.attributes.chapter || 'N/A'}
                     </a>
                     <div class="chapter-actions">
-                      <button class="btn-small ${ch.isRead ? 'btn-read-status' : ''}" 
-                              onclick="markRead('${m.manga_id}', '${ch.id}', '${ch.attributes.chapter || '0'}', ${ch.isRead})">
+                      <button class="btn-small" 
+                              onclick="markRead('${m.manga_id}', '${ch.id}', '${ch.attributes.chapter || '0'}')">
                         ✓ READ
                       </button>
-                      ${ch.isRead 
-                        ? `<button class="btn-small btn-unmark" onclick="unmarkChapter('${ch.id}')" title="Remove from list">
-                             ✕
-                           </button>`
-                        : ''
-                      }
                     </div>
                   </div>
                 `).join('')
@@ -138,57 +132,63 @@ async function loadTrackedManga() {
   }
 }
 
-// Mark chapter as read (or toggle if already read)
-async function markRead(mangaId, chapterId, chapterNumber, isCurrentlyRead = false) {
+// Mark chapter as read with smooth animation
+async function markRead(mangaId, chapterId, chapterNumber) {
   try {
-    if (isCurrentlyRead) {
-      // If already read, unmark it
-      const response = await fetch(`${API_URL}/api/unread`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapterId })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-    } else {
-      // Mark as read
-      const response = await fetch(`${API_URL}/api/read`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mangaId, chapterId, chapterNumber })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+    // Find the chapter element
+    const chapterElement = document.querySelector(`.chapter-item[data-chapter-id="${chapterId}"]`);
+    if (!chapterElement) {
+      console.error('Chapter element not found');
+      return;
     }
     
-    await loadTrackedManga();
-  } catch (error) {
-    console.error('Mark read/unread error:', error);
-    alert('Failed to update chapter status. Check console for details.');
-  }
-}
-
-// Unmark chapter (remove from read list)
-async function unmarkChapter(chapterId) {
-  try {
-    const response = await fetch(`${API_URL}/api/unread`, {
+    // Add removing class to trigger animation
+    chapterElement.classList.add('removing');
+    
+    // Make the API call
+    const response = await fetch(`${API_URL}/api/read`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chapterId })
+      body: JSON.stringify({ mangaId, chapterId, chapterNumber })
     });
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    await loadTrackedManga();
+    // Wait for animation to complete before removing element
+    setTimeout(() => {
+      // Remove the chapter element from DOM
+      chapterElement.remove();
+      
+      // Update the unread badge count
+      const badge = document.querySelector(`.unread-badge[data-manga-id="${mangaId}"]`);
+      if (badge) {
+        const currentCount = parseInt(badge.textContent);
+        const newCount = Math.max(0, currentCount - 1);
+        badge.textContent = `${newCount} NEW`;
+      }
+      
+      // Check if there are any chapters left in this manga
+      const chapterList = document.querySelector(`.chapter-list[data-manga-id="${mangaId}"]`);
+      if (chapterList) {
+        const remainingChapters = chapterList.querySelectorAll('.chapter-item:not(.removing)');
+        if (remainingChapters.length === 0) {
+          // Show "All caught up!" message
+          chapterList.innerHTML = '<div class="empty-state">All caught up!</div>';
+        }
+      }
+    }, 400); // Match animation duration
+    
   } catch (error) {
-    console.error('Unmark chapter error:', error);
-    alert('Failed to unmark chapter. Check console for details.');
+    console.error('Mark read error:', error);
+    alert('Failed to mark chapter as read. Check console for details.');
+    
+    // Remove the animation class if there was an error
+    const chapterElement = document.querySelector(`.chapter-item[data-chapter-id="${chapterId}"]`);
+    if (chapterElement) {
+      chapterElement.classList.remove('removing');
+    }
   }
 }
 
