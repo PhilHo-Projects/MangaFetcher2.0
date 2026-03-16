@@ -1,17 +1,31 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { searchManga, getLatestChapters } = require('./mangadex');
-const { trackManga, untrackManga, markChapterRead, markChapterUnread, getTrackedManga, getReadChapters } = require('./db');
+const { searchManga } = require('./mangadex');
+const { trackManga, untrackManga, markChapterRead, markChapterUnread } = require('./db');
+const { getChaptersForManga, getTrackedMangaWithChapters } = require('./chapter-service');
 const { scheduleChapterCheck, checkForNewChapters, getNextCheckTime } = require('./scheduler');
 
 const app = express();
 const BASE_PATH = process.env.BASE_PATH || '';
 const USER_ID = 1; // Single user app
+const ENABLE_CORS = process.env.ENABLE_CORS === 'true';
+const staticDir = path.join(__dirname, 'public');
 
-app.use(cors());
-app.use(express.json());
-app.use(BASE_PATH, express.static('public')); // Serve static files from public directory
+if (ENABLE_CORS) {
+  app.use(cors());
+}
+
+app.use(express.json({ limit: '32kb' }));
+app.use(BASE_PATH, express.static(staticDir));
+
+function getTrimmedString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function sendBadRequest(res, message) {
+  res.status(400).json({ error: message });
+}
 
 app.get(BASE_PATH + '/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -19,7 +33,13 @@ app.get(BASE_PATH + '/health', (req, res) => {
 
 app.get(BASE_PATH + '/api/search', async (req, res) => {
   try {
-    const results = await searchManga(req.query.title);
+    const title = getTrimmedString(req.query.title);
+
+    if (title.length < 2) {
+      return sendBadRequest(res, 'Search title must be at least 2 characters');
+    }
+
+    const results = await searchManga(title);
     res.json(results);
   } catch (error) {
     console.error('Search error:', error);
@@ -29,7 +49,13 @@ app.get(BASE_PATH + '/api/search', async (req, res) => {
 
 app.get(BASE_PATH + '/api/manga/:id/chapters', async (req, res) => {
   try {
-    const chapters = await getLatestChapters(req.params.id);
+    const mangaId = getTrimmedString(req.params.id);
+
+    if (!mangaId) {
+      return sendBadRequest(res, 'Missing manga ID');
+    }
+
+    const chapters = await getChaptersForManga(mangaId);
     res.json(chapters);
   } catch (error) {
     console.error('Get chapters error:', error);
@@ -40,7 +66,14 @@ app.get(BASE_PATH + '/api/manga/:id/chapters', async (req, res) => {
 // Track a new manga
 app.post(BASE_PATH + '/api/track', async (req, res) => {
   try {
-    const { mangaId, title, coverUrl } = req.body;
+    const mangaId = getTrimmedString(req.body.mangaId);
+    const title = getTrimmedString(req.body.title);
+    const coverUrl = getTrimmedString(req.body.coverUrl);
+
+    if (!mangaId || !title) {
+      return sendBadRequest(res, 'Missing required fields: mangaId, title');
+    }
+
     trackManga(USER_ID, mangaId, title, coverUrl);
     res.json({ success: true });
   } catch (error) {
@@ -52,42 +85,8 @@ app.post(BASE_PATH + '/api/track', async (req, res) => {
 // Get tracked manga with unread counts
 app.get(BASE_PATH + '/api/manga', async (req, res) => {
   try {
-    const tracked = getTrackedManga(USER_ID);
-    
-    // For each manga, fetch latest chapters and calculate unread
-    const enriched = await Promise.all(tracked.map(async (manga) => {
-      const chaptersData = await getLatestChapters(manga.manga_id);
-      let chapters = chaptersData.data || [];
-      
-      // Filter out first 3 chapters (1, 2, 3) as they're always returned by MangaDex
-      chapters = chapters.filter(ch => {
-        const chNum = parseFloat(ch.attributes.chapter);
-        return isNaN(chNum) || chNum > 3;
-      });
-      
-      const readChapters = getReadChapters(USER_ID, manga.manga_id);
-      const readSet = new Set(readChapters.map(r => r.chapter_id));
-      
-      // Filter out chapters that are marked as read
-      const unreadChapters = chapters.filter(ch => !readSet.has(ch.id));
-      
-      // Return only unread chapters (up to 10)
-      const chaptersWithStatus = unreadChapters.slice(0, 10).map(ch => ({
-        ...ch,
-        isRead: false
-      }));
-      
-      const unreadCount = chaptersWithStatus.length;
-      
-      return {
-        ...manga,
-        totalChapters: chapters.length,
-        unreadCount: unreadCount,
-        chapters: chaptersWithStatus
-      };
-    }));
-    
-    res.json(enriched);
+    const trackedManga = await getTrackedMangaWithChapters(USER_ID);
+    res.json(trackedManga);
   } catch (error) {
     console.error('Get tracked manga error:', error);
     res.status(500).json({ error: 'Failed to get tracked manga' });
@@ -97,7 +96,14 @@ app.get(BASE_PATH + '/api/manga', async (req, res) => {
 // Mark chapter as read
 app.post(BASE_PATH + '/api/read', (req, res) => {
   try {
-    const { mangaId, chapterId, chapterNumber } = req.body;
+    const mangaId = getTrimmedString(req.body.mangaId);
+    const chapterId = getTrimmedString(req.body.chapterId);
+    const chapterNumber = getTrimmedString(req.body.chapterNumber);
+
+    if (!mangaId || !chapterId) {
+      return sendBadRequest(res, 'Missing required fields: mangaId, chapterId');
+    }
+
     markChapterRead(USER_ID, mangaId, chapterId, chapterNumber);
     res.json({ success: true });
   } catch (error) {
@@ -109,7 +115,12 @@ app.post(BASE_PATH + '/api/read', (req, res) => {
 // Mark chapter as unread
 app.post(BASE_PATH + '/api/unread', (req, res) => {
   try {
-    const { chapterId } = req.body;
+    const chapterId = getTrimmedString(req.body.chapterId);
+
+    if (!chapterId) {
+      return sendBadRequest(res, 'Missing chapterId');
+    }
+
     markChapterUnread(USER_ID, chapterId);
     res.json({ success: true });
   } catch (error) {
@@ -121,7 +132,13 @@ app.post(BASE_PATH + '/api/unread', (req, res) => {
 // Remove manga from library
 app.delete(BASE_PATH + '/api/untrack/:mangaId', (req, res) => {
   try {
-    untrackManga(USER_ID, req.params.mangaId);
+    const mangaId = getTrimmedString(req.params.mangaId);
+
+    if (!mangaId) {
+      return sendBadRequest(res, 'Missing manga ID');
+    }
+
+    untrackManga(USER_ID, mangaId);
     res.json({ success: true });
   } catch (error) {
     console.error('Untrack manga error:', error);

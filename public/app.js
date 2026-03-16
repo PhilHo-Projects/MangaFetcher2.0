@@ -1,9 +1,29 @@
 // app.js
-// Detect base path from current location
-const BASE_PATH = window.location.pathname.includes('/manga-tracker') ? '/manga-tracker' : '';
-const API_URL = window.location.origin + BASE_PATH;
+const API_ROOT = 'api';
 
 let timerInterval = null;
+
+function apiUrl(path) {
+  return `${API_ROOT}/${path.replace(/^\/+/, '')}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => {
+    if (char === '&') return '&amp;';
+    if (char === '<') return '&lt;';
+    if (char === '>') return '&gt;';
+    if (char === '"') return '&quot;';
+    return '&#39;';
+  });
+}
+
+function encodeInlineArg(value) {
+  return encodeURIComponent(String(value ?? ''));
+}
+
+function decodeInlineArg(value) {
+  return decodeURIComponent(value);
+}
 
 // Format date to MM/DD/YY
 function formatDate(dateString) {
@@ -25,7 +45,7 @@ async function searchManga() {
       return;
     }
 
-    const response = await fetch(`${API_URL}/api/search?title=${encodeURIComponent(query)}`);
+    const response = await fetch(apiUrl(`search?title=${encodeURIComponent(query)}`));
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -41,13 +61,14 @@ async function searchManga() {
     }
     
     resultsDiv.innerHTML = data.data.map(manga => {
-      const title = manga.attributes.title.en || Object.values(manga.attributes.title)[0];
-      const safeTitle = title.replace(/'/g, "\\'");
+      const title = manga.attributes.title.en || Object.values(manga.attributes.title)[0] || 'Untitled';
+      const encodedMangaId = encodeInlineArg(manga.id);
+      const encodedTitle = encodeInlineArg(title);
       
       return `
         <div class="search-result-item">
-          <span class="manga-title">${title}</span>
-          <button class="btn-small" onclick="trackManga('${manga.id}', '${safeTitle}')">
+          <span class="manga-title">${escapeHtml(title)}</span>
+          <button class="btn-small" onclick="trackManga(decodeInlineArg('${encodedMangaId}'), decodeInlineArg('${encodedTitle}'))">
             + TRACK
           </button>
         </div>
@@ -62,7 +83,7 @@ async function searchManga() {
 // Track a new manga
 async function trackManga(mangaId, title) {
   try {
-    const response = await fetch(`${API_URL}/api/track`, {
+    const response = await fetch(apiUrl('track'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mangaId, title, coverUrl: '' })
@@ -87,7 +108,7 @@ async function trackManga(mangaId, title) {
 // Load all tracked manga
 async function loadTrackedManga() {
   try {
-    const response = await fetch(`${API_URL}/api/manga`);
+    const response = await fetch(apiUrl('manga'));
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -102,31 +123,34 @@ async function loadTrackedManga() {
     }
     
     listDiv.innerHTML = manga.map(m => {
-      const safeTitle = m.manga_title.replace(/'/g, "\\'");
+      const encodedMangaId = encodeInlineArg(m.manga_id);
+      const encodedTitle = encodeInlineArg(m.manga_title);
       return `
-        <div class="manga-card" data-manga-id="${m.manga_id}">
+        <div class="manga-card" data-manga-id="${escapeHtml(m.manga_id)}">
           <div class="manga-header">
-            <h3 class="manga-title">${m.manga_title}</h3>
+            <h3 class="manga-title">${escapeHtml(m.manga_title)}</h3>
             <div class="manga-header-actions">
-              <span class="unread-badge" data-manga-id="${m.manga_id}">${m.unreadCount} NEW</span>
-              <button class="btn-remove" onclick="removeManga('${m.manga_id}', '${safeTitle}')" title="Remove from library">
+              <span class="unread-badge" data-manga-id="${escapeHtml(m.manga_id)}">${m.unreadCount} NEW</span>
+              <button class="btn-remove" onclick="removeManga(decodeInlineArg('${encodedMangaId}'), decodeInlineArg('${encodedTitle}'))" title="Remove from library">
                 ✕
               </button>
             </div>
           </div>
-          <div class="chapter-list" data-manga-id="${m.manga_id}">
+          <div class="chapter-list" data-manga-id="${escapeHtml(m.manga_id)}">
             ${m.chapters && m.chapters.length > 0 
               ? m.chapters.map(ch => {
                   const releaseDate = formatDate(ch.attributes.publishAt || ch.attributes.createdAt);
+                  const encodedChapterId = encodeInlineArg(ch.id);
+                  const encodedChapterNumber = encodeInlineArg(ch.attributes.chapter || '0');
                   return `
-                  <div class="chapter-item" data-chapter-id="${ch.id}">
-                    <a href="https://mangadex.org/chapter/${ch.id}" target="_blank" rel="noopener noreferrer" class="chapter-link">
-                      Chapter ${ch.attributes.chapter || 'N/A'}
+                  <div class="chapter-item" data-chapter-id="${escapeHtml(ch.id)}">
+                    <a href="https://mangadex.org/chapter/${encodeURIComponent(ch.id)}" target="_blank" rel="noopener noreferrer" class="chapter-link">
+                      Chapter ${escapeHtml(ch.attributes.chapter || 'N/A')}
                     </a>
-                    <span class="chapter-date">${releaseDate}</span>
+                    <span class="chapter-date">${escapeHtml(releaseDate)}</span>
                     <div class="chapter-actions">
                       <button class="btn-small" 
-                              onclick="markRead('${m.manga_id}', '${ch.id}', '${ch.attributes.chapter || '0'}')">
+                              onclick="markRead(decodeInlineArg('${encodedMangaId}'), decodeInlineArg('${encodedChapterId}'), decodeInlineArg('${encodedChapterNumber}'))">
                         ✓ READ
                       </button>
                     </div>
@@ -160,7 +184,7 @@ async function markRead(mangaId, chapterId, chapterNumber) {
     chapterElement.classList.add('removing');
     
     // Make the API call
-    const response = await fetch(`${API_URL}/api/read`, {
+    const response = await fetch(apiUrl('read'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mangaId, chapterId, chapterNumber })
@@ -247,7 +271,7 @@ function showConfirmModal(message, onConfirm) {
 async function removeManga(mangaId, title) {
   showConfirmModal(`Remove "${title}" from your library?`, async () => {
     try {
-      const response = await fetch(`${API_URL}/api/untrack/${mangaId}`, {
+      const response = await fetch(apiUrl(`untrack/${encodeURIComponent(mangaId)}`), {
         method: 'DELETE'
       });
       
@@ -274,7 +298,7 @@ async function manualRefresh() {
     refreshBtn.classList.add('refreshing');
     timerDisplay.textContent = 'REFRESHING...';
     
-    const response = await fetch(`${API_URL}/api/refresh`, {
+    const response = await fetch(apiUrl('refresh'), {
       method: 'POST'
     });
     
@@ -341,7 +365,7 @@ async function startCountdownTimer() {
   
   try {
     // Get next check time from server
-    const response = await fetch(`${API_URL}/api/next-check`);
+    const response = await fetch(apiUrl('next-check'));
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
