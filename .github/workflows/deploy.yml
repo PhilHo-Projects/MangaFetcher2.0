@@ -11,7 +11,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Deploy to server
       uses: appleboy/ssh-action@master
@@ -20,13 +20,35 @@ jobs:
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
         script: |
+          set -euo pipefail
           cd ~/projects/manga-tracker
+
+          DB_BACKUP_DIR="$HOME/.cache/manga-tracker-deploy"
+          mkdir -p "$DB_BACKUP_DIR"
+          HAD_DB=0
+
+          # Preserve the live tracker database before force-syncing the code checkout.
+          if [ -f data/manga-tracker.db ]; then
+            HAD_DB=1
+            cp data/manga-tracker.db "$DB_BACKUP_DIR/manga-tracker.db"
+            [ -f data/manga-tracker.db-shm ] && cp data/manga-tracker.db-shm "$DB_BACKUP_DIR/manga-tracker.db-shm" || true
+            [ -f data/manga-tracker.db-wal ] && cp data/manga-tracker.db-wal "$DB_BACKUP_DIR/manga-tracker.db-wal" || true
+          fi
           
-          # Pull latest code
+          # Force the checkout to match GitHub exactly.
           if [ -d .git ]; then
-            git pull --ff-only origin main
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
           else
             git clone git@github.com:PhilHo-Projects/MangaFetcher2.0.git .
+          fi
+
+          if [ "$HAD_DB" -eq 1 ]; then
+            mkdir -p data
+            cp "$DB_BACKUP_DIR/manga-tracker.db" data/manga-tracker.db
+            [ -f "$DB_BACKUP_DIR/manga-tracker.db-shm" ] && cp "$DB_BACKUP_DIR/manga-tracker.db-shm" data/manga-tracker.db-shm || true
+            [ -f "$DB_BACKUP_DIR/manga-tracker.db-wal" ] && cp "$DB_BACKUP_DIR/manga-tracker.db-wal" data/manga-tracker.db-wal || true
           fi
           
           # Install dependencies reproducibly
