@@ -1,32 +1,83 @@
-// db.js
 const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+const fs = require('node:fs');
+const path = require('node:path');
+const {
+  DEFAULT_SOURCE_URLS,
+  DEFAULT_SOURCE_URLS_BY_TITLE,
+  resolveDefaultSourceUrl,
+  normalizeSourceUrl
+} = require('./source-links');
 
-// Create data directory if it doesn't exist
-const dataDir = path.join(__dirname, 'data');
+const dataDir = process.env.MANGA_TRACKER_DATA_DIR
+  ? path.resolve(process.env.MANGA_TRACKER_DATA_DIR)
+  : path.join(__dirname, 'data');
+
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
   console.log('Created data directory');
 }
 
-// Initialize database
-const dbPath = path.join(dataDir, 'manga-tracker.db');
+const dbPath = process.env.MANGA_TRACKER_DB_PATH
+  ? path.resolve(process.env.MANGA_TRACKER_DB_PATH)
+  : path.join(dataDir, 'manga-tracker.db');
+
 let db;
+
+function normalizeChapterNumber(value) {
+  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizeTrackOptions(coverUrlOrOptions = '', sourceUrl = '') {
+  const defaults = {
+    coverUrl: '',
+    sourceUrl: '',
+    provider: null,
+    providerSeriesId: null,
+    latestChapterNumber: null,
+    lastReadChapterNumber: null,
+    migrationStatus: null
+  };
+
+  if (coverUrlOrOptions && typeof coverUrlOrOptions === 'object' && !Array.isArray(coverUrlOrOptions)) {
+    return {
+      ...defaults,
+      ...coverUrlOrOptions
+    };
+  }
+
+  return {
+    ...defaults,
+    coverUrl: typeof coverUrlOrOptions === 'string' ? coverUrlOrOptions : '',
+    sourceUrl: typeof sourceUrl === 'string' ? sourceUrl : ''
+  };
+}
+
+function getResolvedSourceUrl({ mangaId, providerSeriesId, title, sourceUrl }) {
+  const normalized = normalizeSourceUrl(sourceUrl);
+  return normalized || resolveDefaultSourceUrl({ mangaId, providerSeriesId, title });
+}
+
+function ensureColumn(tableName, columnName, definition) {
+  const columns = new Set(
+    db.prepare(`PRAGMA table_info(${tableName})`).all().map(column => column.name)
+  );
+
+  if (!columns.has(columnName)) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+}
 
 try {
   db = new Database(dbPath);
   console.log(`Database connected: ${dbPath}`);
-  
+
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
-
-  // Keep WAL mode, but cap checkpoint growth for long-running PM2 processes.
   db.pragma('journal_mode = WAL');
   db.pragma('wal_autocheckpoint = 1000');
   db.pragma('journal_size_limit = 67108864');
-  
-  // Create tables
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +91,12 @@ try {
       manga_id TEXT NOT NULL,
       manga_title TEXT NOT NULL,
       cover_url TEXT,
+      source_url TEXT,
+      provider TEXT,
+      provider_series_id TEXT,
+      latest_chapter_number INTEGER,
+      last_read_chapter_number INTEGER,
+      migration_status TEXT,
       added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id),
       UNIQUE(user_id, manga_id)
@@ -75,10 +132,31 @@ try {
       last_error TEXT
     );
 
-    CREATE INDEX IF NOT EXISTS idx_tracked_manga_user 
+    CREATE TABLE IF NOT EXISTS unread_backlog (
+      manga_id TEXT NOT NULL,
+      chapter_number INTEGER NOT NULL,
+      detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (manga_id, chapter_number)
+    );
+  `);
+
+  ensureColumn('tracked_manga', 'source_url', 'TEXT');
+  ensureColumn('tracked_manga', 'provider', 'TEXT');
+  ensureColumn('tracked_manga', 'provider_series_id', 'TEXT');
+  ensureColumn('tracked_manga', 'latest_chapter_number', 'INTEGER');
+  ensureColumn('tracked_manga', 'last_read_chapter_number', 'INTEGER');
+  ensureColumn('tracked_manga', 'migration_status', 'TEXT');
+  ensureColumn('chapter_cache', 'created_at', 'DATETIME');
+  ensureColumn('chapter_cache', 'position', 'INTEGER DEFAULT 0');
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tracked_manga_user
       ON tracked_manga(user_id);
-    
-    CREATE INDEX IF NOT EXISTS idx_read_chapters_user_manga 
+
+    CREATE INDEX IF NOT EXISTS idx_tracked_manga_provider
+      ON tracked_manga(provider, provider_series_id, migration_status);
+
+    CREATE INDEX IF NOT EXISTS idx_read_chapters_user_manga
       ON read_chapters(user_id, manga_id);
 
     CREATE INDEX IF NOT EXISTS idx_chapter_cache_manga_position
@@ -86,89 +164,188 @@ try {
 
     CREATE INDEX IF NOT EXISTS idx_manga_cache_state_success
       ON manga_cache_state(last_success_at);
+
+    CREATE INDEX IF NOT EXISTS idx_unread_backlog_manga
+      ON unread_backlog(manga_id, chapter_number DESC);
   `);
 
-  const chapterCacheColumns = new Set(
-    db.prepare('PRAGMA table_info(chapter_cache)').all().map(column => column.name)
-  );
-
-  if (!chapterCacheColumns.has('created_at')) {
-    db.exec('ALTER TABLE chapter_cache ADD COLUMN created_at DATETIME');
-  }
-
-  if (!chapterCacheColumns.has('position')) {
-    db.exec('ALTER TABLE chapter_cache ADD COLUMN position INTEGER DEFAULT 0');
-  }
-  
   console.log('Database tables initialized');
-  
-  // Ensure default user exists (for single-user app)
+
   const defaultUser = db.prepare('SELECT * FROM users WHERE id = 1').get();
   if (!defaultUser) {
     db.prepare('INSERT INTO users (id, username) VALUES (1, ?)').run('default_user');
     console.log('Created default user (ID: 1)');
   }
+
+  seedDefaultSourceUrls();
 } catch (error) {
   console.error('Failed to initialize database:', error);
   process.exit(1);
 }
 
-// User functions
 function addUser(username) {
+  const value = String(username ?? '').trim();
+  if (!value) {
+    throw new Error('Username cannot be empty');
+  }
+
   try {
-    if (!username || username.trim().length === 0) {
-      throw new Error('Username cannot be empty');
-    }
-    
-    const stmt = db.prepare('INSERT INTO users (username) VALUES (?)');
-    const result = stmt.run(username.trim());
-    console.log(`User created: ${username} (ID: ${result.lastInsertRowid})`);
+    const result = db.prepare('INSERT INTO users (username) VALUES (?)').run(value);
+    console.log(`User created: ${value} (ID: ${result.lastInsertRowid})`);
     return result;
   } catch (error) {
     if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-      throw new Error(`Username "${username}" already exists`);
+      throw new Error(`Username "${value}" already exists`);
     }
+
     console.error('Error adding user:', error);
     throw error;
   }
 }
 
 function getUser(userId) {
-  try {
-    const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
-    return stmt.get(userId);
-  } catch (error) {
-    console.error('Error getting user:', error);
-    throw error;
-  }
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
 }
 
 function getUserByUsername(username) {
-  try {
-    const stmt = db.prepare('SELECT * FROM users WHERE username = ?');
-    return stmt.get(username);
-  } catch (error) {
-    console.error('Error getting user by username:', error);
-    throw error;
-  }
+  return db.prepare('SELECT * FROM users WHERE username = ?').get(username);
 }
 
-// Manga tracking functions
-function trackManga(userId, mangaId, title, coverUrl = '') {
+function updateTrackedMangaRecord(userId, mangaId, options = {}) {
+  const resolvedSourceUrl = getResolvedSourceUrl({
+    mangaId,
+    providerSeriesId: options.providerSeriesId,
+    title: options.title,
+    sourceUrl: options.sourceUrl
+  });
+
+  return db.prepare(`
+    UPDATE tracked_manga
+    SET
+      manga_title = COALESCE(?, manga_title),
+      cover_url = CASE
+        WHEN ? IS NOT NULL AND ? != '' THEN ?
+        ELSE cover_url
+      END,
+      source_url = CASE
+        WHEN source_url IS NULL OR TRIM(source_url) = '' THEN ?
+        ELSE source_url
+      END,
+      provider = COALESCE(?, provider),
+      provider_series_id = COALESCE(?, provider_series_id),
+      latest_chapter_number = COALESCE(?, latest_chapter_number),
+      last_read_chapter_number = COALESCE(?, last_read_chapter_number),
+      migration_status = COALESCE(?, migration_status)
+    WHERE user_id = ? AND manga_id = ?
+  `).run(
+    options.title || null,
+    options.coverUrl || null,
+    options.coverUrl || null,
+    options.coverUrl || null,
+    resolvedSourceUrl || null,
+    options.provider || null,
+    options.providerSeriesId || null,
+    normalizeChapterNumber(options.latestChapterNumber),
+    normalizeChapterNumber(options.lastReadChapterNumber),
+    options.migrationStatus || null,
+    userId,
+    mangaId
+  );
+}
+
+function trackManga(userId, mangaId, title, coverUrlOrOptions = '', sourceUrl = '') {
+  if (!userId || !mangaId || !title) {
+    throw new Error('Missing required parameters: userId, mangaId, title');
+  }
+
+  const options = normalizeTrackOptions(coverUrlOrOptions, sourceUrl);
+  const providerSeriesId = options.providerSeriesId ? String(options.providerSeriesId) : null;
+  const provider = options.provider || (providerSeriesId ? 'mangaupdates' : null);
+  const migrationStatus = options.migrationStatus || (providerSeriesId ? 'resolved' : null);
+  const coverUrl = String(options.coverUrl ?? '').trim();
+  const resolvedSourceUrl = getResolvedSourceUrl({
+    mangaId,
+    providerSeriesId,
+    title,
+    sourceUrl: options.sourceUrl
+  });
+  const latestChapterNumber = normalizeChapterNumber(options.latestChapterNumber);
+  const lastReadChapterNumber = normalizeChapterNumber(options.lastReadChapterNumber);
+
   try {
-    if (!userId || !mangaId || !title) {
-      throw new Error('Missing required parameters: userId, mangaId, title');
+    if (providerSeriesId) {
+      const unresolvedRow = db.prepare(`
+        SELECT manga_id
+        FROM tracked_manga
+        WHERE user_id = ?
+          AND migration_status = 'unresolved'
+          AND lower(manga_title) = lower(?)
+        LIMIT 1
+      `).get(userId, title);
+
+      if (unresolvedRow && unresolvedRow.manga_id !== mangaId) {
+        const result = updateTrackedMangaRecord(userId, unresolvedRow.manga_id, {
+          title,
+          coverUrl,
+          sourceUrl: resolvedSourceUrl,
+          provider,
+          providerSeriesId,
+          latestChapterNumber,
+          lastReadChapterNumber,
+          migrationStatus: 'resolved'
+        });
+
+        if (result.changes > 0) {
+          console.log(`Relinked unresolved manga "${title}" to provider series ${providerSeriesId}`);
+          return result;
+        }
+      }
     }
-    
-    const stmt = db.prepare(
-      'INSERT OR IGNORE INTO tracked_manga (user_id, manga_id, manga_title, cover_url) VALUES (?, ?, ?, ?)'
+
+    const result = db.prepare(`
+      INSERT OR IGNORE INTO tracked_manga (
+        user_id,
+        manga_id,
+        manga_title,
+        cover_url,
+        source_url,
+        provider,
+        provider_series_id,
+        latest_chapter_number,
+        last_read_chapter_number,
+        migration_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      userId,
+      mangaId,
+      title,
+      coverUrl,
+      resolvedSourceUrl || '',
+      provider,
+      providerSeriesId,
+      latestChapterNumber,
+      lastReadChapterNumber,
+      migrationStatus
     );
-    const result = stmt.run(userId, mangaId, title, coverUrl);
-    
+
+    if (result.changes === 0 && providerSeriesId) {
+      updateTrackedMangaRecord(userId, mangaId, {
+        title,
+        coverUrl,
+        sourceUrl: resolvedSourceUrl,
+        provider,
+        providerSeriesId,
+        latestChapterNumber,
+        lastReadChapterNumber,
+        migrationStatus
+      });
+    }
+
     if (result.changes > 0) {
       console.log(`Tracked manga: ${title} for user ${userId}`);
     }
-    
+
     return result;
   } catch (error) {
     console.error('Error tracking manga:', error);
@@ -177,28 +354,15 @@ function trackManga(userId, mangaId, title, coverUrl = '') {
 }
 
 function untrackManga(userId, mangaId) {
+  const transaction = db.transaction(() => {
+    db.prepare('DELETE FROM read_chapters WHERE user_id = ? AND manga_id = ?').run(userId, mangaId);
+    db.prepare('DELETE FROM tracked_manga WHERE user_id = ? AND manga_id = ?').run(userId, mangaId);
+    db.prepare('DELETE FROM chapter_cache WHERE manga_id = ?').run(mangaId);
+    db.prepare('DELETE FROM manga_cache_state WHERE manga_id = ?').run(mangaId);
+    db.prepare('DELETE FROM unread_backlog WHERE manga_id = ?').run(mangaId);
+  });
+
   try {
-    const deleteChapters = db.prepare(
-      'DELETE FROM read_chapters WHERE user_id = ? AND manga_id = ?'
-    );
-    const deleteManga = db.prepare(
-      'DELETE FROM tracked_manga WHERE user_id = ? AND manga_id = ?'
-    );
-    const deleteCachedChapters = db.prepare(
-      'DELETE FROM chapter_cache WHERE manga_id = ?'
-    );
-    const deleteCacheState = db.prepare(
-      'DELETE FROM manga_cache_state WHERE manga_id = ?'
-    );
-    
-    // Use transaction for atomicity
-    const transaction = db.transaction(() => {
-      deleteChapters.run(userId, mangaId);
-      deleteManga.run(userId, mangaId);
-      deleteCachedChapters.run(mangaId);
-      deleteCacheState.run(mangaId);
-    });
-    
     transaction();
     console.log(`Untracked manga ${mangaId} for user ${userId}`);
     return { success: true };
@@ -209,98 +373,184 @@ function untrackManga(userId, mangaId) {
 }
 
 function getTrackedManga(userId) {
+  return db.prepare('SELECT * FROM tracked_manga WHERE user_id = ? ORDER BY added_at DESC').all(userId);
+}
+
+function getTrackedMangaById(userId, mangaId) {
+  return db.prepare('SELECT * FROM tracked_manga WHERE user_id = ? AND manga_id = ? LIMIT 1').get(userId, mangaId);
+}
+
+function getTrackedMangaForSync(userId = 1) {
+  return db.prepare(`
+    SELECT *
+    FROM tracked_manga
+    WHERE user_id = ?
+      AND provider = 'mangaupdates'
+      AND provider_series_id IS NOT NULL
+      AND migration_status = 'resolved'
+    ORDER BY added_at DESC
+  `).all(userId);
+}
+
+function getTrackedMangaNeedingMigration(userId = 1) {
+  return db.prepare(`
+    SELECT *
+    FROM tracked_manga
+    WHERE user_id = ?
+      AND (
+        provider_series_id IS NULL
+        OR migration_status IS NULL
+        OR migration_status = 'unresolved'
+      )
+    ORDER BY added_at DESC
+  `).all(userId);
+}
+
+function updateTrackedMangaProviderData(userId, mangaId, data = {}) {
   try {
-    const stmt = db.prepare('SELECT * FROM tracked_manga WHERE user_id = ? ORDER BY added_at DESC');
-    return stmt.all(userId);
+    return updateTrackedMangaRecord(userId, mangaId, {
+      title: data.title,
+      coverUrl: data.coverUrl,
+      sourceUrl: data.sourceUrl,
+      provider: data.provider,
+      providerSeriesId: data.providerSeriesId,
+      latestChapterNumber: data.latestChapterNumber,
+      lastReadChapterNumber: data.lastReadChapterNumber,
+      migrationStatus: data.migrationStatus
+    });
   } catch (error) {
-    console.error('Error getting tracked manga:', error);
+    console.error('Error updating tracked manga provider data:', error);
+    throw error;
+  }
+}
+
+function updateTrackedMangaLatestChapter(userId, mangaId, latestChapterNumber) {
+  try {
+    return db.prepare(`
+      UPDATE tracked_manga
+      SET latest_chapter_number = ?
+      WHERE user_id = ? AND manga_id = ?
+    `).run(normalizeChapterNumber(latestChapterNumber), userId, mangaId);
+  } catch (error) {
+    console.error('Error updating latest chapter number:', error);
+    throw error;
+  }
+}
+
+function updateMangaSourceUrl(userId, mangaId, sourceUrl) {
+  try {
+    return db.prepare(`
+      UPDATE tracked_manga
+      SET source_url = ?
+      WHERE user_id = ? AND manga_id = ?
+    `).run(normalizeSourceUrl(sourceUrl), userId, mangaId);
+  } catch (error) {
+    console.error('Error updating manga source URL:', error);
+    throw error;
+  }
+}
+
+function seedDefaultSourceUrls() {
+  try {
+    const idStmt = db.prepare(`
+      UPDATE tracked_manga
+      SET source_url = ?
+      WHERE manga_id = ?
+        AND (source_url IS NULL OR TRIM(source_url) = '')
+    `);
+    const titleStmt = db.prepare(`
+      UPDATE tracked_manga
+      SET source_url = ?
+      WHERE lower(manga_title) = lower(?)
+        AND (source_url IS NULL OR TRIM(source_url) = '')
+    `);
+
+    const transaction = db.transaction(() => {
+      let seededCount = 0;
+
+      for (const [mangaId, sourceUrl] of Object.entries(DEFAULT_SOURCE_URLS)) {
+        seededCount += idStmt.run(sourceUrl, mangaId).changes;
+      }
+
+      for (const [title, sourceUrl] of Object.entries(DEFAULT_SOURCE_URLS_BY_TITLE)) {
+        seededCount += titleStmt.run(sourceUrl, title).changes;
+      }
+
+      return seededCount;
+    });
+
+    const seededCount = transaction();
+    if (seededCount > 0) {
+      console.log(`Seeded ${seededCount} default manga source URL(s)`);
+    }
+
+    return seededCount;
+  } catch (error) {
+    console.error('Error seeding default manga source URLs:', error);
     throw error;
   }
 }
 
 function getAllTrackedMangaIds() {
-  try {
-    const stmt = db.prepare('SELECT DISTINCT manga_id FROM tracked_manga ORDER BY manga_id');
-    return stmt.all().map(row => row.manga_id);
-  } catch (error) {
-    console.error('Error getting tracked manga IDs:', error);
-    throw error;
-  }
+  return db.prepare('SELECT DISTINCT manga_id FROM tracked_manga ORDER BY manga_id').all().map(row => row.manga_id);
 }
 
 function isTracking(userId, mangaId) {
-  try {
-    const stmt = db.prepare(
-      'SELECT 1 FROM tracked_manga WHERE user_id = ? AND manga_id = ? LIMIT 1'
-    );
-    return stmt.get(userId, mangaId) !== undefined;
-  } catch (error) {
-    console.error('Error checking if tracking:', error);
-    throw error;
-  }
+  return db.prepare('SELECT 1 FROM tracked_manga WHERE user_id = ? AND manga_id = ? LIMIT 1').get(userId, mangaId) !== undefined;
 }
 
 function getCachedChapters(mangaId, limit = 20) {
-  try {
-    const stmt = db.prepare(`
-      SELECT chapter_id, chapter_number, title, published_at, created_at
-      FROM chapter_cache
-      WHERE manga_id = ?
-      ORDER BY position ASC
-      LIMIT ?
-    `);
-
-    return stmt.all(mangaId, limit).map(row => ({
-      id: row.chapter_id,
-      attributes: {
-        chapter: row.chapter_number,
-        title: row.title,
-        publishAt: row.published_at,
-        createdAt: row.created_at
-      }
-    }));
-  } catch (error) {
-    console.error('Error getting cached chapters:', error);
-    throw error;
-  }
+  return db.prepare(`
+    SELECT chapter_id, chapter_number, title, published_at, created_at
+    FROM chapter_cache
+    WHERE manga_id = ?
+    ORDER BY position ASC
+    LIMIT ?
+  `).all(mangaId, limit).map(row => ({
+    id: row.chapter_id,
+    attributes: {
+      chapter: row.chapter_number,
+      title: row.title,
+      publishAt: row.published_at,
+      createdAt: row.created_at
+    }
+  }));
 }
 
 function saveCachedChapters(mangaId, chapters) {
-  try {
-    const deleteStmt = db.prepare('DELETE FROM chapter_cache WHERE manga_id = ?');
+  const transaction = db.transaction((chapterList) => {
+    db.prepare('DELETE FROM chapter_cache WHERE manga_id = ?').run(mangaId);
+
     const insertStmt = db.prepare(`
       INSERT INTO chapter_cache (
         manga_id, chapter_id, chapter_number, title, published_at, created_at, position, cached_at
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
-    const upsertStateStmt = db.prepare(`
+
+    chapterList.slice(0, 20).forEach((chapter, index) => {
+      insertStmt.run(
+        mangaId,
+        chapter.id,
+        chapter.attributes.chapter || null,
+        chapter.attributes.title || null,
+        chapter.attributes.publishAt || null,
+        chapter.attributes.createdAt || null,
+        index
+      );
+    });
+
+    db.prepare(`
       INSERT INTO manga_cache_state (manga_id, last_checked_at, last_success_at, last_error)
       VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
       ON CONFLICT(manga_id) DO UPDATE SET
         last_checked_at = excluded.last_checked_at,
         last_success_at = excluded.last_success_at,
         last_error = NULL
-    `);
+    `).run(mangaId);
+  });
 
-    const transaction = db.transaction((chapterList) => {
-      deleteStmt.run(mangaId);
-
-      chapterList.slice(0, 20).forEach((chapter, index) => {
-        insertStmt.run(
-          mangaId,
-          chapter.id,
-          chapter.attributes.chapter || null,
-          chapter.attributes.title || null,
-          chapter.attributes.publishAt || null,
-          chapter.attributes.createdAt || null,
-          index
-        );
-      });
-
-      upsertStateStmt.run(mangaId);
-    });
-
+  try {
     transaction(chapters);
     console.log(`Cached ${Math.min(chapters.length, 20)} chapters for manga ${mangaId}`);
   } catch (error) {
@@ -310,43 +560,30 @@ function saveCachedChapters(mangaId, chapters) {
 }
 
 function getMangaCacheState(mangaId) {
-  try {
-    const stmt = db.prepare('SELECT * FROM manga_cache_state WHERE manga_id = ?');
-    return stmt.get(mangaId);
-  } catch (error) {
-    console.error('Error getting manga cache state:', error);
-    throw error;
-  }
+  return db.prepare('SELECT * FROM manga_cache_state WHERE manga_id = ?').get(mangaId);
 }
 
 function recordMangaCacheError(mangaId, errorMessage) {
-  try {
-    const stmt = db.prepare(`
-      INSERT INTO manga_cache_state (manga_id, last_checked_at, last_error)
-      VALUES (?, CURRENT_TIMESTAMP, ?)
-      ON CONFLICT(manga_id) DO UPDATE SET
-        last_checked_at = excluded.last_checked_at,
-        last_error = excluded.last_error
-    `);
-
-    stmt.run(mangaId, errorMessage);
-  } catch (error) {
-    console.error('Error recording manga cache failure:', error);
-    throw error;
-  }
+  db.prepare(`
+    INSERT INTO manga_cache_state (manga_id, last_checked_at, last_error)
+    VALUES (?, CURRENT_TIMESTAMP, ?)
+    ON CONFLICT(manga_id) DO UPDATE SET
+      last_checked_at = excluded.last_checked_at,
+      last_error = excluded.last_error
+  `).run(mangaId, errorMessage);
 }
 
-// Chapter reading functions
 function markChapterRead(userId, mangaId, chapterId, chapterNumber) {
   try {
     if (!userId || !mangaId || !chapterId) {
       throw new Error('Missing required parameters: userId, mangaId, chapterId');
     }
-    
-    const stmt = db.prepare(
-      'INSERT OR REPLACE INTO read_chapters (user_id, manga_id, chapter_id, chapter_number) VALUES (?, ?, ?, ?)'
-    );
-    const result = stmt.run(userId, mangaId, chapterId, chapterNumber || 'unknown');
+
+    const result = db.prepare(`
+      INSERT OR REPLACE INTO read_chapters (user_id, manga_id, chapter_id, chapter_number)
+      VALUES (?, ?, ?, ?)
+    `).run(userId, mangaId, chapterId, chapterNumber || 'unknown');
+
     console.log(`Marked chapter ${chapterNumber} as read for user ${userId}`);
     return result;
   } catch (error) {
@@ -357,10 +594,7 @@ function markChapterRead(userId, mangaId, chapterId, chapterNumber) {
 
 function markChapterUnread(userId, chapterId) {
   try {
-    const stmt = db.prepare(
-      'DELETE FROM read_chapters WHERE user_id = ? AND chapter_id = ?'
-    );
-    const result = stmt.run(userId, chapterId);
+    const result = db.prepare('DELETE FROM read_chapters WHERE user_id = ? AND chapter_id = ?').run(userId, chapterId);
     console.log(`Marked chapter ${chapterId} as unread for user ${userId}`);
     return result;
   } catch (error) {
@@ -370,42 +604,54 @@ function markChapterUnread(userId, chapterId) {
 }
 
 function getReadChapters(userId, mangaId) {
-  try {
-    const stmt = db.prepare(
-      'SELECT chapter_id, chapter_number, read_at FROM read_chapters WHERE user_id = ? AND manga_id = ? ORDER BY read_at DESC'
-    );
-    return stmt.all(userId, mangaId);
-  } catch (error) {
-    console.error('Error getting read chapters:', error);
-    throw error;
-  }
+  return db.prepare(`
+    SELECT chapter_id, chapter_number, read_at
+    FROM read_chapters
+    WHERE user_id = ? AND manga_id = ?
+    ORDER BY read_at DESC
+  `).all(userId, mangaId);
 }
 
 function getAllReadChapters(userId) {
-  try {
-    const stmt = db.prepare(
-      'SELECT manga_id, chapter_id, chapter_number FROM read_chapters WHERE user_id = ?'
-    );
-    return stmt.all(userId);
-  } catch (error) {
-    console.error('Error getting all read chapters:', error);
-    throw error;
-  }
+  return db.prepare('SELECT manga_id, chapter_id, chapter_number FROM read_chapters WHERE user_id = ?').all(userId);
 }
 
-// Bulk operations for performance
+function getMaxReadChapterNumber(userId, mangaId) {
+  const rows = getReadChapters(userId, mangaId);
+  let maxChapter = null;
+
+  for (const row of rows) {
+    const chapterNumber = normalizeChapterNumber(row.chapter_number);
+    if (chapterNumber !== null && (maxChapter === null || chapterNumber > maxChapter)) {
+      maxChapter = chapterNumber;
+    }
+  }
+
+  return maxChapter;
+}
+
+function getLegacyUnreadCount(userId, mangaId) {
+  const visibleChapters = getCachedChapters(mangaId, 20).filter(chapter => {
+    const chapterNumber = Number.parseFloat(chapter.attributes.chapter);
+    return Number.isNaN(chapterNumber) || chapterNumber > 3;
+  });
+  const readSet = new Set(getReadChapters(userId, mangaId).map(chapter => chapter.chapter_id));
+  return visibleChapters.filter(chapter => !readSet.has(chapter.id)).length;
+}
+
 function markMultipleChaptersRead(userId, mangaId, chapters) {
+  const transaction = db.transaction((chapterList) => {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO read_chapters (user_id, manga_id, chapter_id, chapter_number)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    for (const chapter of chapterList) {
+      stmt.run(userId, mangaId, chapter.chapterId, chapter.chapterNumber);
+    }
+  });
+
   try {
-    const stmt = db.prepare(
-      'INSERT OR REPLACE INTO read_chapters (user_id, manga_id, chapter_id, chapter_number) VALUES (?, ?, ?, ?)'
-    );
-    
-    const transaction = db.transaction((chapterList) => {
-      for (const chapter of chapterList) {
-        stmt.run(userId, mangaId, chapter.chapterId, chapter.chapterNumber);
-      }
-    });
-    
     transaction(chapters);
     console.log(`Marked ${chapters.length} chapters as read for user ${userId}`);
     return { success: true, count: chapters.length };
@@ -415,51 +661,136 @@ function markMultipleChaptersRead(userId, mangaId, chapters) {
   }
 }
 
-// Statistics functions
-function getUserStats(userId) {
-  try {
-    const trackedCount = db.prepare(
-      'SELECT COUNT(*) as count FROM tracked_manga WHERE user_id = ?'
-    ).get(userId).count;
-    
-    const readCount = db.prepare(
-      'SELECT COUNT(*) as count FROM read_chapters WHERE user_id = ?'
-    ).get(userId).count;
-    
-    return {
-      trackedManga: trackedCount,
-      chaptersRead: readCount
-    };
-  } catch (error) {
-    console.error('Error getting user stats:', error);
-    throw error;
-  }
+function replaceUnreadBacklog(mangaId, chapterNumbers, detectedAt = new Date().toISOString()) {
+  const normalizedNumbers = [...new Set(
+    chapterNumbers
+      .map(normalizeChapterNumber)
+      .filter(chapterNumber => chapterNumber !== null)
+  )];
+
+  const transaction = db.transaction(() => {
+    db.prepare('DELETE FROM unread_backlog WHERE manga_id = ?').run(mangaId);
+    const insertStmt = db.prepare(`
+      INSERT OR IGNORE INTO unread_backlog (manga_id, chapter_number, detected_at)
+      VALUES (?, ?, ?)
+    `);
+
+    for (const chapterNumber of normalizedNumbers) {
+      insertStmt.run(mangaId, chapterNumber, detectedAt);
+    }
+  });
+
+  transaction();
 }
 
-// Database maintenance
-function vacuum() {
-  try {
-    db.exec('VACUUM');
-    console.log('Database vacuumed successfully');
-  } catch (error) {
-    console.error('Error vacuuming database:', error);
-    throw error;
+function addUnreadBacklogEntries(mangaId, chapterNumbers, detectedAt = new Date().toISOString()) {
+  const normalizedNumbers = [...new Set(
+    chapterNumbers
+      .map(normalizeChapterNumber)
+      .filter(chapterNumber => chapterNumber !== null)
+  )];
+
+  const transaction = db.transaction(() => {
+    const insertStmt = db.prepare(`
+      INSERT OR IGNORE INTO unread_backlog (manga_id, chapter_number, detected_at)
+      VALUES (?, ?, ?)
+    `);
+
+    for (const chapterNumber of normalizedNumbers) {
+      insertStmt.run(mangaId, chapterNumber, detectedAt);
+    }
+  });
+
+  transaction();
+}
+
+function getUnreadBacklog(mangaId, limit = 100) {
+  return db.prepare(`
+    SELECT chapter_number, detected_at
+    FROM unread_backlog
+    WHERE manga_id = ?
+    ORDER BY chapter_number DESC
+    LIMIT ?
+  `).all(mangaId, limit).map(row => ({
+    id: `${mangaId}:${row.chapter_number}`,
+    chapterNumber: row.chapter_number,
+    detectedAt: row.detected_at
+  }));
+}
+
+function getUnreadBacklogCount(mangaId) {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS backlog_count
+    FROM unread_backlog
+    WHERE manga_id = ?
+  `).get(mangaId);
+
+  return row ? row.backlog_count : 0;
+}
+
+function getHighestUnreadBacklogChapter(mangaId) {
+  const row = db.prepare('SELECT MAX(chapter_number) AS chapter_number FROM unread_backlog WHERE manga_id = ?').get(mangaId);
+  return normalizeChapterNumber(row && row.chapter_number);
+}
+
+function clearUnreadBacklogThroughChapter(mangaId, chapterNumber) {
+  return db.prepare('DELETE FROM unread_backlog WHERE manga_id = ? AND chapter_number <= ?').run(
+    mangaId,
+    normalizeChapterNumber(chapterNumber)
+  );
+}
+
+function advanceProgressToChapter(userId, mangaId, chapterNumber) {
+  const normalizedChapterNumber = normalizeChapterNumber(chapterNumber);
+  if (normalizedChapterNumber === null) {
+    throw new Error('chapterNumber must be a positive integer');
   }
+
+  const tracked = getTrackedMangaById(userId, mangaId);
+  if (!tracked) {
+    throw new Error(`Tracked manga "${mangaId}" not found`);
+  }
+
+  const nextChapterNumber = tracked.last_read_chapter_number === null
+    ? normalizedChapterNumber
+    : Math.max(tracked.last_read_chapter_number, normalizedChapterNumber);
+
+  const transaction = db.transaction(() => {
+    db.prepare(`
+      UPDATE tracked_manga
+      SET last_read_chapter_number = ?
+      WHERE user_id = ? AND manga_id = ?
+    `).run(nextChapterNumber, userId, mangaId);
+
+    db.prepare('DELETE FROM unread_backlog WHERE manga_id = ? AND chapter_number <= ?').run(
+      mangaId,
+      nextChapterNumber
+    );
+  });
+
+  transaction();
+  return nextChapterNumber;
+}
+
+function getUserStats(userId) {
+  return {
+    trackedManga: db.prepare('SELECT COUNT(*) AS count FROM tracked_manga WHERE user_id = ?').get(userId).count,
+    chaptersRead: db.prepare('SELECT COUNT(*) AS count FROM read_chapters WHERE user_id = ?').get(userId).count
+  };
+}
+
+function vacuum() {
+  db.exec('VACUUM');
+  console.log('Database vacuumed successfully');
 }
 
 function closeDatabase() {
-  try {
-    if (db) {
-      db.close();
-      console.log('Database connection closed');
-    }
-  } catch (error) {
-    console.error('Error closing database:', error);
-    throw error;
+  if (db) {
+    db.close();
+    console.log('Database connection closed');
   }
 }
 
-// Graceful shutdown
 process.on('SIGINT', () => {
   closeDatabase();
   process.exit(0);
@@ -470,30 +801,41 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Export all functions
 module.exports = {
   db,
-  // User functions
   addUser,
   getUser,
   getUserByUsername,
-  // Manga tracking
   trackManga,
   untrackManga,
   getTrackedManga,
+  getTrackedMangaById,
+  getTrackedMangaForSync,
+  getTrackedMangaNeedingMigration,
+  updateTrackedMangaProviderData,
+  updateTrackedMangaLatestChapter,
+  updateMangaSourceUrl,
+  seedDefaultSourceUrls,
   getAllTrackedMangaIds,
   isTracking,
   getCachedChapters,
   saveCachedChapters,
   getMangaCacheState,
   recordMangaCacheError,
-  // Chapter reading
   markChapterRead,
   markChapterUnread,
   getReadChapters,
   getAllReadChapters,
+  getMaxReadChapterNumber,
+  getLegacyUnreadCount,
   markMultipleChaptersRead,
-  // Stats & maintenance
+  replaceUnreadBacklog,
+  addUnreadBacklogEntries,
+  getUnreadBacklog,
+  getUnreadBacklogCount,
+  getHighestUnreadBacklogChapter,
+  clearUnreadBacklogThroughChapter,
+  advanceProgressToChapter,
   getUserStats,
   vacuum,
   closeDatabase

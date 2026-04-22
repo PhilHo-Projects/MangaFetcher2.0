@@ -29,6 +29,16 @@ async function searchManga(title) {
   }
 }
 
+async function getMangaDetails(mangaId) {
+  try {
+    const response = await client.get(`/manga/${encodeURIComponent(mangaId)}`);
+    return response.data;
+  } catch (error) {
+    console.error('MangaDex detail error:', error);
+    throw error;
+  }
+}
+
 async function getLatestChapters(mangaId) {
   try {
     const params = {
@@ -45,4 +55,4 @@ async function getLatestChapters(mangaId) {
   }
 }
 
-module.exports = { searchManga, getLatestChapters };
+module.exports = { searchManga, getMangaDetails, getLatestChapters };

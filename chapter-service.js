@@ -1,125 +1,85 @@
-const { getLatestChapters } = require('./mangadex');
 const {
   getTrackedManga,
-  getAllTrackedMangaIds,
-  getReadChapters,
-  getCachedChapters,
-  saveCachedChapters,
-  getMangaCacheState,
-  recordMangaCacheError
+  getTrackedMangaById,
+  getTrackedMangaForSync,
+  getUnreadBacklog,
+  getUnreadBacklogCount,
+  getHighestUnreadBacklogChapter,
+  addUnreadBacklogEntries,
+  replaceUnreadBacklog,
+  updateTrackedMangaLatestChapter,
+  updateTrackedMangaProviderData
 } = require('./db');
+const { getSeriesDetails } = require('./mangaupdates');
+const { ensureProviderMigration } = require('./provider-migration');
 
-const DEFAULT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const RATE_LIMIT_DELAY_MS = (() => {
+  const parsed = Number.parseInt(process.env.MANGAUPDATES_RATE_LIMIT_DELAY_MS, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 250;
+})();
 
-function readPositiveInt(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-const CACHE_TTL_MS = readPositiveInt(process.env.CHAPTER_CACHE_TTL_MS, DEFAULT_CACHE_TTL_MS);
-const RATE_LIMIT_DELAY_MS = readPositiveInt(process.env.MANGADEX_RATE_LIMIT_DELAY_MS, 250);
-
-const refreshPromises = new Map();
 let refreshAllPromise = null;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function getFreshnessMs(cacheState) {
-  if (!cacheState || !cacheState.last_success_at) {
-    return Number.POSITIVE_INFINITY;
+function buildChapterRange(start, end) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    return [];
   }
 
-  return Date.now() - new Date(cacheState.last_success_at).getTime();
+  const chapters = [];
+  for (let chapter = start; chapter <= end; chapter += 1) {
+    chapters.push(chapter);
+  }
+  return chapters;
 }
 
-function isCacheFresh(cacheState) {
-  return getFreshnessMs(cacheState) < CACHE_TTL_MS;
+function toSyntheticChapter(entry) {
+  return {
+    id: entry.id,
+    attributes: {
+      chapter: String(entry.chapterNumber),
+      title: null,
+      publishAt: null,
+      createdAt: entry.detectedAt
+    },
+    isRead: false
+  };
 }
 
-function normalizeChapterFeed(feed) {
-  return Array.isArray(feed && feed.data) ? feed.data : [];
-}
+async function getChaptersForManga(mangaId, userId = 1) {
+  await ensureProviderMigration();
 
-function filterDisplayChapters(chapters) {
-  return chapters.filter(chapter => {
-    const chapterNumber = Number.parseFloat(chapter.attributes.chapter);
-    return Number.isNaN(chapterNumber) || chapterNumber > 3;
-  });
-}
-
-async function refreshMangaChapters(mangaId) {
-  if (refreshPromises.has(mangaId)) {
-    return refreshPromises.get(mangaId);
+  const tracked = getTrackedMangaById(userId, mangaId);
+  if (!tracked || tracked.migration_status !== 'resolved') {
+    return [];
   }
 
-  const promise = (async () => {
-    try {
-      const feed = await getLatestChapters(mangaId);
-      const chapters = normalizeChapterFeed(feed);
-      saveCachedChapters(mangaId, chapters);
-      return chapters;
-    } catch (error) {
-      recordMangaCacheError(mangaId, error.message);
-      throw error;
-    }
-  })().finally(() => {
-    refreshPromises.delete(mangaId);
-  });
-
-  refreshPromises.set(mangaId, promise);
-  return promise;
-}
-
-async function getChaptersForManga(mangaId, options = {}) {
-  const { forceRefresh = false } = options;
-  const cachedChapters = getCachedChapters(mangaId);
-  const cacheState = getMangaCacheState(mangaId);
-
-  if (!forceRefresh && cachedChapters.length > 0 && isCacheFresh(cacheState)) {
-    return cachedChapters;
-  }
-
-  try {
-    return await refreshMangaChapters(mangaId);
-  } catch (error) {
-    if (cachedChapters.length > 0) {
-      console.warn(
-        `Using stale chapter cache for manga ${mangaId} after refresh failure: ${error.message}`
-      );
-      return cachedChapters;
-    }
-
-    throw error;
-  }
+  return getUnreadBacklog(mangaId, 50).map(toSyntheticChapter);
 }
 
 async function getTrackedMangaWithChapters(userId) {
+  await ensureProviderMigration();
+
   const trackedManga = getTrackedManga(userId);
-  const enriched = [];
+  return trackedManga.map(manga => {
+    const backlog = manga.migration_status === 'resolved'
+      ? getUnreadBacklog(manga.manga_id, 10)
+      : [];
+    const unreadCount = manga.migration_status === 'resolved'
+      ? getUnreadBacklogCount(manga.manga_id)
+      : 0;
 
-  for (const manga of trackedManga) {
-    const chapters = await getChaptersForManga(manga.manga_id);
-    const visibleChapters = filterDisplayChapters(chapters);
-    const readSet = new Set(
-      getReadChapters(userId, manga.manga_id).map(chapter => chapter.chapter_id)
-    );
-    const unreadChapters = visibleChapters.filter(chapter => !readSet.has(chapter.id));
-    const chaptersWithStatus = unreadChapters.slice(0, 10).map(chapter => ({
-      ...chapter,
-      isRead: false
-    }));
-
-    enriched.push({
+    return {
       ...manga,
-      totalChapters: visibleChapters.length,
-      unreadCount: chaptersWithStatus.length,
-      chapters: chaptersWithStatus
-    });
-  }
-
-  return enriched;
+      lastReadChapter: manga.last_read_chapter_number,
+      latestChapter: manga.latest_chapter_number,
+      unreadCount,
+      chapters: backlog.map(toSyntheticChapter)
+    };
+  });
 }
 
 async function refreshAllTrackedManga() {
@@ -128,53 +88,77 @@ async function refreshAllTrackedManga() {
   }
 
   refreshAllPromise = (async () => {
-    const trackedIds = getAllTrackedMangaIds();
+    await ensureProviderMigration();
 
-    if (trackedIds.length === 0) {
+    const trackedRows = getTrackedMangaForSync();
+    if (trackedRows.length === 0) {
       return {
         success: true,
-        message: 'No tracked manga to check',
         totalChecked: 0,
         successCount: 0,
         failCount: 0,
-        usedCacheFallback: 0,
-        duration: '0.00'
+        usedCacheFallback: 0
       };
     }
 
-    const startTime = Date.now();
     let successCount = 0;
     let failCount = 0;
-    let usedCacheFallback = 0;
 
-    for (const mangaId of trackedIds) {
-      const cachedChapters = getCachedChapters(mangaId);
-
+    for (const row of trackedRows) {
       try {
-        await refreshMangaChapters(mangaId);
+        const details = await getSeriesDetails(row.provider_series_id);
+        const latestChapter = details.latestChapter;
+
+        if (latestChapter === null) {
+          successCount += 1;
+          continue;
+        }
+
+        const highestBacklogChapter = getHighestUnreadBacklogChapter(row.manga_id);
+        const baseline = Math.max(
+          row.latest_chapter_number ?? 0,
+          row.last_read_chapter_number ?? 0,
+          highestBacklogChapter ?? 0
+        );
+
+        const newChapters = latestChapter > baseline
+          ? buildChapterRange(baseline + 1, latestChapter)
+          : [];
+
+        if (row.latest_chapter_number === null && row.last_read_chapter_number === null) {
+          updateTrackedMangaProviderData(row.user_id, row.manga_id, {
+            latestChapterNumber: latestChapter,
+            lastReadChapterNumber: latestChapter,
+            migrationStatus: row.migration_status
+          });
+          replaceUnreadBacklog(row.manga_id, []);
+        } else {
+          updateTrackedMangaLatestChapter(
+            row.user_id,
+            row.manga_id,
+            Math.max(row.latest_chapter_number ?? 0, latestChapter)
+          );
+
+          if (newChapters.length > 0) {
+            addUnreadBacklogEntries(row.manga_id, newChapters, new Date().toISOString());
+          }
+        }
+
         successCount += 1;
       } catch (error) {
         failCount += 1;
-
-        if (cachedChapters.length > 0) {
-          usedCacheFallback += 1;
-        }
-
-        console.error(`Error refreshing manga ${mangaId}:`, error.message);
+        console.error(`Error refreshing manga ${row.manga_id}:`, error.message);
       }
 
       await sleep(RATE_LIMIT_DELAY_MS);
     }
 
-    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-
     return {
       success: failCount === 0,
-      duration,
+      totalChecked: trackedRows.length,
       successCount,
       failCount,
-      usedCacheFallback,
-      totalChecked: trackedIds.length
+      usedCacheFallback: 0
     };
   })().finally(() => {
     refreshAllPromise = null;
