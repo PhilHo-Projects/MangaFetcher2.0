@@ -63,6 +63,18 @@ function createApp() {
   }
 
   app.use(express.json({ limit: '32kb' }));
+
+  // Redirect the bare base path (e.g. /manga-tracker) to its trailing-slash form
+  // so the page's relative asset and API URLs resolve correctly under the mount.
+  if (BASE_PATH) {
+    app.get(BASE_PATH, (req, res, next) => {
+      if (req.path === BASE_PATH) {
+        return res.redirect(301, BASE_PATH + '/');
+      }
+      next();
+    });
+  }
+
   app.use(BASE_PATH, express.static(staticDir));
 
   app.get(BASE_PATH + '/health', (req, res) => {
