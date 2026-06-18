@@ -101,8 +101,32 @@ Click the refresh button (↻) in the top right to manually check for new chapte
 - `DELETE /api/untrack/:mangaId` - Remove manga from library
 - `POST /api/read` - Mark chapter as read
 - `POST /api/unread` - Mark chapter as unread
-- `POST /api/refresh` - Manually trigger chapter check
+- `POST /api/refresh` - Manually trigger chapter check (owner only)
 - `GET /api/next-check` - Get next scheduled check time
+- `POST /api/login` - Sign in (owner)
+- `POST /api/logout` - Sign out
+- `GET /api/me` - Current session info
+
+## Authentication & Public Demo
+
+The app has one owner account and a shared public demo.
+
+- **Owner:** signed in via the top-right SIGN IN button. Credentials come from
+  `ADMIN_USERNAME` / `ADMIN_PASSWORD` (default `phil` / `0000`). The login is
+  remembered with an HttpOnly cookie for 30 days.
+- **Public demo:** logged-out visitors share a demo library (`DEMO_USERNAME`,
+  default `demo`) pre-populated with One Piece and Kagurabachi. Anyone can edit
+  it, and the daily 6:00 AM job resets it back to the snapshot (each title shows
+  its 3 newest chapters as unread).
+
+### Auth environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ADMIN_USERNAME` | `phil` | Owner login name (set once at first start). |
+| `ADMIN_PASSWORD` | `0000` | Owner password. Override on the server. Only applied while the owner has no password set. |
+| `DEMO_USERNAME` | `demo` | Username of the shared demo account. |
+| `SESSION_SECRET` | auto | HMAC secret for session cookies. Auto-generated and persisted to `data/session-secret` if unset. |
 
 ## Configuration
 

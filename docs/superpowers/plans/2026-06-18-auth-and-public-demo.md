@@ -801,6 +801,13 @@ function verifySessionToken(token, secret) {
   const payload = `${encodedUserId}.${expiry}`;
   const expectedHmac = crypto.createHmac('sha256', secret).update(payload).digest('hex');
 
+  // Reject anything that is not exactly a 64-char lowercase hex HMAC. Without
+  // this, Buffer.from(hex, 'hex') silently truncates trailing non-hex chars, so
+  // a tampered "<token>x" would decode to the same bytes and pass.
+  if (!/^[0-9a-f]{64}$/.test(providedHmac)) {
+    return null;
+  }
+
   let expectedBuf;
   let providedBuf;
   try {
