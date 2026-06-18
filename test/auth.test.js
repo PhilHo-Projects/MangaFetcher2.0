@@ -46,3 +46,53 @@ test('db init seeds a demo user with role demo', () => {
     cleanup(tempDir);
   }
 });
+
+test('session tokens round-trip and reject tampering/expiry', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'manga-auth-token-test-'));
+  process.env.MANGA_TRACKER_DATA_DIR = tempDir;
+  delete require.cache[require.resolve('../db')];
+  delete require.cache[require.resolve('../auth')];
+  const auth = require('../auth');
+  const dbModule = require('../db');
+
+  try {
+    const secret = 'test-secret';
+    const token = auth.createSessionToken(7, secret);
+    assert.deepEqual(auth.verifySessionToken(token, secret), { userId: 7 });
+
+    assert.equal(auth.verifySessionToken(token, 'wrong-secret'), null);
+    assert.equal(auth.verifySessionToken(token + 'x', secret), null);
+    assert.equal(auth.verifySessionToken('a.b.c', secret), null);
+    assert.equal(auth.verifySessionToken('', secret), null);
+
+    const expired = auth.createSessionToken(7, secret, -1000);
+    assert.equal(auth.verifySessionToken(expired, secret), null);
+  } finally {
+    dbModule.closeDatabase();
+    delete process.env.MANGA_TRACKER_DATA_DIR;
+    delete require.cache[require.resolve('../auth')];
+    delete require.cache[require.resolve('../db')];
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('parseCookies parses a cookie header into a map', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'manga-auth-cookie-test-'));
+  process.env.MANGA_TRACKER_DATA_DIR = tempDir;
+  delete require.cache[require.resolve('../db')];
+  delete require.cache[require.resolve('../auth')];
+  const auth = require('../auth');
+  const dbModule = require('../db');
+
+  try {
+    assert.deepEqual(auth.parseCookies('a=1; b=two'), { a: '1', b: 'two' });
+    assert.deepEqual(auth.parseCookies(''), {});
+    assert.deepEqual(auth.parseCookies(undefined), {});
+  } finally {
+    dbModule.closeDatabase();
+    delete process.env.MANGA_TRACKER_DATA_DIR;
+    delete require.cache[require.resolve('../auth')];
+    delete require.cache[require.resolve('../db')];
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
