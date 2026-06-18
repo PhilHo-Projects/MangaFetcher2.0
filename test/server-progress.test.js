@@ -84,7 +84,8 @@ function cleanupModules() {
     '../chapter-service',
     '../scheduler',
     '../mangaupdates',
-    '../provider-migration'
+    '../provider-migration',
+    '../demo'
   ].forEach(moduleName => {
     try {
       delete require.cache[require.resolve(moduleName)];

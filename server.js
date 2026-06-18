@@ -18,6 +18,7 @@ const { scheduleChapterCheck, checkForNewChapters, getNextCheckTime } = require(
 const { isValidSourceUrl, normalizeSourceUrl } = require('./source-links');
 const { verifyPassword } = require('./password');
 const { attachUser, requireOwner, setSessionCookie, clearSessionCookie } = require('./auth');
+const { ensureDemoSeeded } = require('./demo');
 
 const BASE_PATH = process.env.BASE_PATH || '';
 const ENABLE_CORS = process.env.ENABLE_CORS === 'true';
@@ -320,6 +321,10 @@ function startServer(port = process.env.PORT || 3001) {
 
     scheduleChapterCheck();
     console.log('Chapter check scheduler started - will run daily at 6:00 AM');
+
+    ensureDemoSeeded()
+      .then(() => console.log('Demo library ready'))
+      .catch(error => console.error('Failed to seed demo library:', error.message));
   });
 
   return server;
