@@ -10,14 +10,16 @@ const {
   untrackManga,
   advanceProgressToChapter,
   markChapterUnread,
-  updateMangaSourceUrl
+  updateMangaSourceUrl,
+  getUserByUsername
 } = require('./db');
 const { getChaptersForManga, getTrackedMangaWithChapters } = require('./chapter-service');
 const { scheduleChapterCheck, checkForNewChapters, getNextCheckTime } = require('./scheduler');
 const { isValidSourceUrl, normalizeSourceUrl } = require('./source-links');
+const { verifyPassword } = require('./password');
+const { attachUser, requireOwner, setSessionCookie, clearSessionCookie } = require('./auth');
 
 const BASE_PATH = process.env.BASE_PATH || '';
-const USER_ID = 1; // Single user app
 const ENABLE_CORS = process.env.ENABLE_CORS === 'true';
 const staticDir = path.join(__dirname, 'public');
 const INITIAL_TRACK_PREVIEW_COUNT = 3;
@@ -63,10 +65,44 @@ function createApp() {
   }
 
   app.use(express.json({ limit: '32kb' }));
+  app.use(attachUser);
   app.use(BASE_PATH, express.static(staticDir));
 
   app.get(BASE_PATH + '/health', (req, res) => {
     res.json({ status: 'ok' });
+  });
+
+  app.post(BASE_PATH + '/api/login', (req, res) => {
+    const username = getTrimmedString(req.body.username);
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+
+    if (!username || !password) {
+      return sendBadRequest(res, 'Missing username or password');
+    }
+
+    const user = getUserByUsername(username);
+    if (!user || user.role === 'demo' || !verifyPassword(password, user.password_hash)) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    setSessionCookie(res, user.id, BASE_PATH);
+    res.json({ success: true, username: user.username, role: user.role });
+  });
+
+  app.post(BASE_PATH + '/api/logout', (req, res) => {
+    clearSessionCookie(res, BASE_PATH);
+    res.json({ success: true });
+  });
+
+  app.get(BASE_PATH + '/api/me', (req, res) => {
+    const user = req.user;
+    const isDemo = !user || user.role === 'demo';
+    res.json({
+      authenticated: !isDemo,
+      username: user ? user.username : null,
+      role: user ? user.role : null,
+      isDemo
+    });
   });
 
   app.get(BASE_PATH + '/api/search', async (req, res) => {
@@ -93,7 +129,7 @@ function createApp() {
         return sendBadRequest(res, 'Missing manga ID');
       }
 
-      const chapters = await getChaptersForManga(mangaId);
+      const chapters = await getChaptersForManga(mangaId, req.userId);
       res.json(chapters);
     } catch (error) {
       console.error('Get chapters error:', error);
@@ -119,8 +155,8 @@ function createApp() {
       const seriesDetails = await getSeriesDetails(mangaId);
       const resolvedTitle = title || seriesDetails.title;
       const latestChapterNumber = normalizeChapterNumber(seriesDetails.latestChapter);
-      const existingTracked = getTrackedMangaById(USER_ID, mangaId);
-      const existingUnreadCount = existingTracked ? getUnreadBacklogCount(USER_ID, mangaId) : 0;
+      const existingTracked = getTrackedMangaById(req.userId, mangaId);
+      const existingUnreadCount = existingTracked ? getUnreadBacklogCount(req.userId, mangaId) : 0;
       const shouldSeedInitialPreview = latestChapterNumber !== null && (
         !existingTracked ||
         (
@@ -133,7 +169,7 @@ function createApp() {
         ? getInitialPreviewLastRead(latestChapterNumber)
         : null;
 
-      trackManga(USER_ID, mangaId, resolvedTitle, {
+      trackManga(req.userId, mangaId, resolvedTitle, {
         coverUrl: coverUrl || seriesDetails.imageUrl || '',
         sourceUrl,
         provider: 'mangaupdates',
@@ -148,7 +184,7 @@ function createApp() {
           (initialLastReadChapter ?? 0) + 1,
           latestChapterNumber
         );
-        replaceUnreadBacklog(USER_ID, mangaId, initialUnreadChapters);
+        replaceUnreadBacklog(req.userId, mangaId, initialUnreadChapters);
       }
 
       res.json({ success: true });
@@ -160,7 +196,7 @@ function createApp() {
 
   app.get(BASE_PATH + '/api/manga', async (req, res) => {
     try {
-      const trackedManga = await getTrackedMangaWithChapters(USER_ID);
+      const trackedManga = await getTrackedMangaWithChapters(req.userId);
       res.json(trackedManga);
     } catch (error) {
       console.error('Get tracked manga error:', error);
@@ -190,7 +226,7 @@ function createApp() {
         return sendBadRequest(res, 'sourceUrl must start with http:// or https://');
       }
 
-      const result = updateMangaSourceUrl(USER_ID, mangaId, sourceUrl);
+      const result = updateMangaSourceUrl(req.userId, mangaId, sourceUrl);
 
       if (result.changes === 0) {
         return res.status(404).json({ error: 'Manga not found' });
@@ -212,7 +248,7 @@ function createApp() {
         return sendBadRequest(res, 'Missing required fields: mangaId, chapterNumber');
       }
 
-      const resolvedChapterNumber = advanceProgressToChapter(USER_ID, mangaId, chapterNumber);
+      const resolvedChapterNumber = advanceProgressToChapter(req.userId, mangaId, chapterNumber);
       res.json({ success: true, chapterNumber: resolvedChapterNumber });
     } catch (error) {
       console.error('Mark read error:', error);
@@ -228,7 +264,7 @@ function createApp() {
         return sendBadRequest(res, 'Missing chapterId');
       }
 
-      markChapterUnread(USER_ID, chapterId);
+      markChapterUnread(req.userId, chapterId);
       res.json({ success: true });
     } catch (error) {
       console.error('Mark unread error:', error);
@@ -244,7 +280,7 @@ function createApp() {
         return sendBadRequest(res, 'Missing manga ID');
       }
 
-      untrackManga(USER_ID, mangaId);
+      untrackManga(req.userId, mangaId);
       res.json({ success: true });
     } catch (error) {
       console.error('Untrack manga error:', error);
@@ -252,7 +288,7 @@ function createApp() {
     }
   });
 
-  app.post(BASE_PATH + '/api/refresh', async (req, res) => {
+  app.post(BASE_PATH + '/api/refresh', requireOwner, async (req, res) => {
     try {
       console.log('Manual refresh triggered');
       const result = await checkForNewChapters();
