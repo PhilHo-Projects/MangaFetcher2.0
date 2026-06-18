@@ -5,8 +5,18 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 
+async function loginAsOwner(baseUrl) {
+  const response = await fetch(`${baseUrl}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'phil', password: '0000' })
+  });
+  return (response.headers.get('set-cookie') || '').split(';')[0];
+}
+
 function loadFreshModules(tempDir) {
   delete require.cache[require.resolve('../db')];
+  delete require.cache[require.resolve('../auth')];
   delete require.cache[require.resolve('../server')];
   process.env.MANGA_TRACKER_DATA_DIR = tempDir;
 
@@ -19,6 +29,7 @@ function loadFreshModules(tempDir) {
 function cleanupModules() {
   delete process.env.MANGA_TRACKER_DATA_DIR;
   delete require.cache[require.resolve('../db')];
+  delete require.cache[require.resolve('../auth')];
   delete require.cache[require.resolve('../server')];
 }
 
@@ -37,17 +48,18 @@ test('PATCH /api/manga/:id/source validates and saves source URLs', async () => 
     await new Promise(resolve => server.listen(0, resolve));
     const { port } = server.address();
     const baseUrl = `http://127.0.0.1:${port}`;
+    const cookie = await loginAsOwner(baseUrl);
 
     let response = await fetch(`${baseUrl}/api/manga/test-source-manga/source`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify({ sourceUrl: 'ftp://example.com/invalid' })
     });
     assert.equal(response.status, 400);
 
     response = await fetch(`${baseUrl}/api/manga/test-source-manga/source`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify({ sourceUrl: 'https://example.com/read-here' })
     });
     assert.equal(response.status, 200);
@@ -56,7 +68,7 @@ test('PATCH /api/manga/:id/source validates and saves source URLs', async () => 
 
     response = await fetch(`${baseUrl}/api/manga/test-source-manga/source`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify({ sourceUrl: '' })
     });
     assert.equal(response.status, 200);

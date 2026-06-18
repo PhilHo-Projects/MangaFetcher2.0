@@ -1,4 +1,5 @@
 const { refreshAllTrackedManga } = require('./chapter-service');
+const { resetDemoAccount } = require('./demo');
 
 function readBoundedInt(value, fallback, min, max) {
   const parsed = Number.parseInt(value, 10);
@@ -56,6 +57,15 @@ async function checkForNewChapters() {
   }
 }
 
+async function runDailyMaintenance() {
+  await checkForNewChapters();
+  try {
+    await resetDemoAccount();
+  } catch (error) {
+    console.error('Demo reset failed during scheduled maintenance:', error.message);
+  }
+}
+
 function clearScheduler() {
   if (schedulerTimeout) {
     clearTimeout(schedulerTimeout);
@@ -74,7 +84,7 @@ function scheduleNextRun() {
     console.log('Running scheduled chapter check...');
 
     try {
-      await checkForNewChapters();
+      await runDailyMaintenance();
     } catch (error) {
       console.error('Scheduled check failed:', error);
     } finally {
@@ -90,5 +100,6 @@ function scheduleChapterCheck() {
 module.exports = {
   scheduleChapterCheck,
   checkForNewChapters,
-  getNextCheckTime
+  getNextCheckTime,
+  runDailyMaintenance
 };

@@ -5,6 +5,15 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 
+async function loginAsOwner(baseUrl) {
+  const response = await fetch(`${baseUrl}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'phil', password: '0000' })
+  });
+  return (response.headers.get('set-cookie') || '').split(';')[0];
+}
+
 function installMangaupdatesStub() {
   const modulePath = path.join(__dirname, '..', 'mangaupdates.js');
   require.cache[modulePath] = {
@@ -70,11 +79,13 @@ function cleanupModules() {
   delete process.env.MANGA_TRACKER_DATA_DIR;
   [
     '../db',
+    '../auth',
     '../server',
     '../chapter-service',
     '../scheduler',
     '../mangaupdates',
-    '../provider-migration'
+    '../provider-migration',
+    '../demo'
   ].forEach(moduleName => {
     try {
       delete require.cache[require.resolve(moduleName)];
@@ -99,7 +110,7 @@ test('search route returns normalized MangaUpdates results and read route advanc
     lastReadChapterNumber: 395,
     migrationStatus: 'resolved'
   });
-  dbModule.replaceUnreadBacklog('legacy-eleceed', [396, 397, 398], '2026-04-21T12:00:00.000Z');
+  dbModule.replaceUnreadBacklog(1, 'legacy-eleceed', [396, 397, 398], '2026-04-21T12:00:00.000Z');
 
   const app = serverModule.createApp();
   const server = http.createServer(app);
@@ -108,6 +119,7 @@ test('search route returns normalized MangaUpdates results and read route advanc
     await new Promise(resolve => server.listen(0, resolve));
     const { port } = server.address();
     const baseUrl = `http://127.0.0.1:${port}`;
+    const cookie = await loginAsOwner(baseUrl);
 
     let response = await fetch(`${baseUrl}/api/search?title=Eleceed`);
     assert.equal(response.status, 200);
@@ -128,7 +140,7 @@ test('search route returns normalized MangaUpdates results and read route advanc
 
     response = await fetch(`${baseUrl}/api/read`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify({ mangaId: 'legacy-eleceed', chapterNumber: '397' })
     });
     assert.equal(response.status, 200);
@@ -136,7 +148,7 @@ test('search route returns normalized MangaUpdates results and read route advanc
     const tracked = dbModule.getTrackedManga(1).find(row => row.manga_id === 'legacy-eleceed');
     assert.equal(tracked.last_read_chapter_number, 397);
     assert.deepEqual(
-      dbModule.getUnreadBacklog('legacy-eleceed').map(entry => entry.chapterNumber),
+      dbModule.getUnreadBacklog(1, 'legacy-eleceed').map(entry => entry.chapterNumber),
       [398]
     );
   } finally {
@@ -163,6 +175,7 @@ test('tracked manga route reports the full unread backlog count while only rende
     migrationStatus: 'resolved'
   });
   dbModule.replaceUnreadBacklog(
+    1,
     'legacy-kagurabachi',
     Array.from({ length: 120 }, (_, index) => index + 1),
     '2026-04-21T12:00:00.000Z'
@@ -175,8 +188,9 @@ test('tracked manga route reports the full unread backlog count while only rende
     await new Promise(resolve => server.listen(0, resolve));
     const { port } = server.address();
     const baseUrl = `http://127.0.0.1:${port}`;
+    const cookie = await loginAsOwner(baseUrl);
 
-    const response = await fetch(`${baseUrl}/api/manga`);
+    const response = await fetch(`${baseUrl}/api/manga`, { headers: { Cookie: cookie } });
     assert.equal(response.status, 200);
 
     const payload = await response.json();
@@ -207,10 +221,11 @@ test('track route seeds the latest three chapters as initial unread backlog for 
     await new Promise(resolve => server.listen(0, resolve));
     const { port } = server.address();
     const baseUrl = `http://127.0.0.1:${port}`;
+    const cookie = await loginAsOwner(baseUrl);
 
     const response = await fetch(`${baseUrl}/api/track`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify({ mangaId: '114563652', title: 'Nano Machine', coverUrl: '' })
     });
     assert.equal(response.status, 200);
@@ -220,7 +235,7 @@ test('track route seeds the latest three chapters as initial unread backlog for 
     assert.equal(tracked.latest_chapter_number, 308);
     assert.equal(tracked.last_read_chapter_number, 305);
 
-    const backlog = dbModule.getUnreadBacklog('114563652');
+    const backlog = dbModule.getUnreadBacklog(1, '114563652');
     assert.deepEqual(
       backlog.map(entry => entry.chapterNumber),
       [308, 307, 306]

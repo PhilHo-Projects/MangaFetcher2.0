@@ -9,6 +9,9 @@ data/*.db-wal
 *.db-shm
 *.db-wal
 
+# Session secret (auto-generated, never commit)
+data/session-secret
+
 # Logs
 *.log
 npm-debug.log*

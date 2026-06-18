@@ -136,7 +136,7 @@ async function migrateTrackedRow(row) {
     lastReadChapterNumber,
     migrationStatus: 'resolved'
   });
-  replaceUnreadBacklog(row.manga_id, unreadChapters, detectedAt);
+  replaceUnreadBacklog(row.user_id, row.manga_id, unreadChapters, detectedAt);
 
   return {
     status: 'resolved',

@@ -21,6 +21,7 @@ let sourceModalState = {
   mangaId: '',
   sourceUrl: ''
 };
+let authState = { authenticated: false, username: null, role: null, isDemo: true };
 
 const HEADER_ICONS = Object.freeze({
   source: `
@@ -702,6 +703,151 @@ async function startCountdownTimer() {
   }
 }
 
+function renderAuthControl() {
+  const control = document.getElementById('auth-control');
+  const banner = document.getElementById('demo-banner');
+  const refreshBtn = document.getElementById('refresh-btn');
+  if (!control) {
+    return;
+  }
+
+  if (authState.authenticated) {
+    control.innerHTML = `
+      <span class="auth-user">${escapeHtml(authState.username || '')}</span>
+      <button class="btn btn-secondary btn-auth" id="logout-btn">SIGN OUT</button>
+    `;
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', logout);
+    }
+  } else {
+    control.innerHTML = `<button class="btn btn-primary btn-auth" id="signin-btn">SIGN IN</button>`;
+    const signinBtn = document.getElementById('signin-btn');
+    if (signinBtn) {
+      signinBtn.addEventListener('click', showLoginModal);
+    }
+  }
+
+  if (banner) {
+    banner.hidden = !authState.isDemo;
+  }
+  if (refreshBtn) {
+    refreshBtn.style.display = authState.isDemo ? 'none' : '';
+  }
+}
+
+async function loadSession() {
+  try {
+    const response = await fetch(apiUrl('me'), { credentials: 'same-origin' });
+    if (response.ok) {
+      authState = await response.json();
+    }
+  } catch (error) {
+    console.error('Failed to load session:', error);
+  }
+  renderAuthControl();
+}
+
+function showLoginModal() {
+  const modal = document.getElementById('login-modal');
+  const error = document.getElementById('login-error');
+  const username = document.getElementById('login-username');
+  const password = document.getElementById('login-password');
+  if (!modal) {
+    return;
+  }
+  if (error) {
+    error.hidden = true;
+    error.textContent = '';
+  }
+  if (username) {
+    username.value = '';
+  }
+  if (password) {
+    password.value = '';
+  }
+  modal.style.display = 'flex';
+  if (username) {
+    username.focus();
+  }
+}
+
+function hideLoginModal() {
+  const modal = document.getElementById('login-modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+async function submitLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const error = document.getElementById('login-error');
+
+  try {
+    const response = await fetch(apiUrl('login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ username, password })
+    });
+
+    if (!response.ok) {
+      if (error) {
+        error.textContent = 'Invalid username or password.';
+        error.hidden = false;
+      }
+      return;
+    }
+
+    hideLoginModal();
+    await loadSession();
+    await loadTrackedManga();
+  } catch (err) {
+    console.error('Login error:', err);
+    if (error) {
+      error.textContent = 'Login failed. Try again.';
+      error.hidden = false;
+    }
+  }
+}
+
+async function logout() {
+  try {
+    await fetch(apiUrl('logout'), { method: 'POST', credentials: 'same-origin' });
+  } catch (error) {
+    console.error('Logout error:', error);
+  }
+  await loadSession();
+  await loadTrackedManga();
+}
+
+function initializeLoginModal() {
+  const modal = document.getElementById('login-modal');
+  const cancelBtn = document.getElementById('login-cancel');
+  const submitBtn = document.getElementById('login-submit');
+  const password = document.getElementById('login-password');
+  if (!modal || !cancelBtn || !submitBtn) {
+    return;
+  }
+
+  cancelBtn.addEventListener('click', hideLoginModal);
+  submitBtn.addEventListener('click', submitLogin);
+  modal.addEventListener('click', event => {
+    if (event.target === modal) {
+      hideLoginModal();
+    }
+  });
+  if (password) {
+    password.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submitLogin();
+      }
+    });
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const searchInput = document.getElementById('search-input');
   if (searchInput) {
@@ -713,7 +859,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   initializeSourceModal();
+  initializeLoginModal();
   initializeHeaderPalette();
+  loadSession();
   loadTrackedManga();
   startCountdownTimer();
 });
