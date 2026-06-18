@@ -99,7 +99,7 @@ test('search route returns normalized MangaUpdates results and read route advanc
     lastReadChapterNumber: 395,
     migrationStatus: 'resolved'
   });
-  dbModule.replaceUnreadBacklog('legacy-eleceed', [396, 397, 398], '2026-04-21T12:00:00.000Z');
+  dbModule.replaceUnreadBacklog(1, 'legacy-eleceed', [396, 397, 398], '2026-04-21T12:00:00.000Z');
 
   const app = serverModule.createApp();
   const server = http.createServer(app);
@@ -136,7 +136,7 @@ test('search route returns normalized MangaUpdates results and read route advanc
     const tracked = dbModule.getTrackedManga(1).find(row => row.manga_id === 'legacy-eleceed');
     assert.equal(tracked.last_read_chapter_number, 397);
     assert.deepEqual(
-      dbModule.getUnreadBacklog('legacy-eleceed').map(entry => entry.chapterNumber),
+      dbModule.getUnreadBacklog(1, 'legacy-eleceed').map(entry => entry.chapterNumber),
       [398]
     );
   } finally {
@@ -163,6 +163,7 @@ test('tracked manga route reports the full unread backlog count while only rende
     migrationStatus: 'resolved'
   });
   dbModule.replaceUnreadBacklog(
+    1,
     'legacy-kagurabachi',
     Array.from({ length: 120 }, (_, index) => index + 1),
     '2026-04-21T12:00:00.000Z'
@@ -220,7 +221,7 @@ test('track route seeds the latest three chapters as initial unread backlog for 
     assert.equal(tracked.latest_chapter_number, 308);
     assert.equal(tracked.last_read_chapter_number, 305);
 
-    const backlog = dbModule.getUnreadBacklog('114563652');
+    const backlog = dbModule.getUnreadBacklog(1, '114563652');
     assert.deepEqual(
       backlog.map(entry => entry.chapterNumber),
       [308, 307, 306]

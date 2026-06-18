@@ -120,7 +120,7 @@ function createApp() {
       const resolvedTitle = title || seriesDetails.title;
       const latestChapterNumber = normalizeChapterNumber(seriesDetails.latestChapter);
       const existingTracked = getTrackedMangaById(USER_ID, mangaId);
-      const existingUnreadCount = existingTracked ? getUnreadBacklogCount(mangaId) : 0;
+      const existingUnreadCount = existingTracked ? getUnreadBacklogCount(USER_ID, mangaId) : 0;
       const shouldSeedInitialPreview = latestChapterNumber !== null && (
         !existingTracked ||
         (
@@ -148,7 +148,7 @@ function createApp() {
           (initialLastReadChapter ?? 0) + 1,
           latestChapterNumber
         );
-        replaceUnreadBacklog(mangaId, initialUnreadChapters);
+        replaceUnreadBacklog(USER_ID, mangaId, initialUnreadChapters);
       }
 
       res.json({ success: true });

@@ -57,7 +57,7 @@ async function getChaptersForManga(mangaId, userId = 1) {
     return [];
   }
 
-  return getUnreadBacklog(mangaId, 50).map(toSyntheticChapter);
+  return getUnreadBacklog(userId, mangaId, 50).map(toSyntheticChapter);
 }
 
 async function getTrackedMangaWithChapters(userId) {
@@ -66,10 +66,10 @@ async function getTrackedMangaWithChapters(userId) {
   const trackedManga = getTrackedManga(userId);
   return trackedManga.map(manga => {
     const backlog = manga.migration_status === 'resolved'
-      ? getUnreadBacklog(manga.manga_id, 10)
+      ? getUnreadBacklog(userId, manga.manga_id, 10)
       : [];
     const unreadCount = manga.migration_status === 'resolved'
-      ? getUnreadBacklogCount(manga.manga_id)
+      ? getUnreadBacklogCount(userId, manga.manga_id)
       : 0;
 
     return {
@@ -114,7 +114,7 @@ async function refreshAllTrackedManga() {
           continue;
         }
 
-        const highestBacklogChapter = getHighestUnreadBacklogChapter(row.manga_id);
+        const highestBacklogChapter = getHighestUnreadBacklogChapter(row.user_id, row.manga_id);
         const baseline = Math.max(
           row.latest_chapter_number ?? 0,
           row.last_read_chapter_number ?? 0,
@@ -131,7 +131,7 @@ async function refreshAllTrackedManga() {
             lastReadChapterNumber: latestChapter,
             migrationStatus: row.migration_status
           });
-          replaceUnreadBacklog(row.manga_id, []);
+          replaceUnreadBacklog(row.user_id, row.manga_id, []);
         } else {
           updateTrackedMangaLatestChapter(
             row.user_id,
@@ -140,7 +140,7 @@ async function refreshAllTrackedManga() {
           );
 
           if (newChapters.length > 0) {
-            addUnreadBacklogEntries(row.manga_id, newChapters, new Date().toISOString());
+            addUnreadBacklogEntries(row.user_id, row.manga_id, newChapters, new Date().toISOString());
           }
         }
 

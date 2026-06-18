@@ -35,9 +35,9 @@ test('stores MangaUpdates progress fields and advances backlog progress by chapt
     assert.equal(tracked.last_read_chapter_number, 395);
     assert.equal(tracked.migration_status, 'resolved');
 
-    dbModule.replaceUnreadBacklog('legacy-eleceed', [396, 397, 398], '2026-04-21T12:00:00.000Z');
+    dbModule.replaceUnreadBacklog(1, 'legacy-eleceed', [396, 397, 398], '2026-04-21T12:00:00.000Z');
 
-    let backlog = dbModule.getUnreadBacklog('legacy-eleceed');
+    let backlog = dbModule.getUnreadBacklog(1, 'legacy-eleceed');
     assert.deepEqual(
       backlog.map(entry => entry.chapterNumber),
       [398, 397, 396]
@@ -49,7 +49,7 @@ test('stores MangaUpdates progress fields and advances backlog progress by chapt
     tracked = dbModule.getTrackedManga(1).find(row => row.manga_id === 'legacy-eleceed');
     assert.equal(tracked.last_read_chapter_number, 397);
 
-    backlog = dbModule.getUnreadBacklog('legacy-eleceed');
+    backlog = dbModule.getUnreadBacklog(1, 'legacy-eleceed');
     assert.deepEqual(
       backlog.map(entry => entry.chapterNumber),
       [398]
