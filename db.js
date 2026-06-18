@@ -7,6 +7,7 @@ const {
   resolveDefaultSourceUrl,
   normalizeSourceUrl
 } = require('./source-links');
+const { hashPassword } = require('./password');
 
 const dataDir = process.env.MANGA_TRACKER_DATA_DIR
   ? path.resolve(process.env.MANGA_TRACKER_DATA_DIR)
@@ -148,6 +149,8 @@ try {
   ensureColumn('tracked_manga', 'migration_status', 'TEXT');
   ensureColumn('chapter_cache', 'created_at', 'DATETIME');
   ensureColumn('chapter_cache', 'position', 'INTEGER DEFAULT 0');
+  ensureColumn('users', 'password_hash', 'TEXT');
+  ensureColumn('users', 'role', "TEXT DEFAULT 'user'");
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tracked_manga_user
@@ -178,6 +181,7 @@ try {
   }
 
   seedDefaultSourceUrls();
+  seedAccounts();
 } catch (error) {
   console.error('Failed to initialize database:', error);
   process.exit(1);
@@ -209,6 +213,31 @@ function getUser(userId) {
 
 function getUserByUsername(username) {
   return db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+}
+
+function seedAccounts() {
+  const adminUsername = String(process.env.ADMIN_USERNAME || 'phil').trim() || 'phil';
+  const adminPassword = process.env.ADMIN_PASSWORD || '0000';
+  const demoUsername = String(process.env.DEMO_USERNAME || 'demo').trim() || 'demo';
+
+  const owner = db.prepare('SELECT * FROM users WHERE id = 1').get();
+  if (owner) {
+    if (!owner.username || owner.username === 'default_user') {
+      db.prepare('UPDATE users SET username = ? WHERE id = 1').run(adminUsername);
+    }
+    if (!owner.password_hash) {
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = 1').run(hashPassword(adminPassword));
+    }
+    db.prepare("UPDATE users SET role = 'owner' WHERE id = 1").run();
+  }
+
+  const demo = db.prepare('SELECT * FROM users WHERE username = ?').get(demoUsername);
+  if (!demo) {
+    db.prepare("INSERT INTO users (username, role) VALUES (?, 'demo')").run(demoUsername);
+    console.log(`Created demo user: ${demoUsername}`);
+  } else if (demo.role !== 'demo') {
+    db.prepare("UPDATE users SET role = 'demo' WHERE id = ?").run(demo.id);
+  }
 }
 
 function updateTrackedMangaRecord(userId, mangaId, options = {}) {
@@ -803,9 +832,11 @@ process.on('SIGTERM', () => {
 
 module.exports = {
   db,
+  dataDir,
   addUser,
   getUser,
   getUserByUsername,
+  seedAccounts,
   trackManga,
   untrackManga,
   getTrackedManga,
