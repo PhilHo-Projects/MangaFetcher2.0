@@ -111,8 +111,8 @@ Click the refresh button (↻) in the top right to manually check for new chapte
 
 The app has one owner account and a shared public demo.
 
-- **Owner:** signed in via the top-right SIGN IN button. Credentials come from
-  `ADMIN_USERNAME` / `ADMIN_PASSWORD` (default `phil` / `0000`). The login is
+- **Owner:** signed in via the top-right SIGN IN button. Initial credentials come from
+  `ADMIN_USERNAME` / `ADMIN_PASSWORD`; there are no credential defaults. The login is
   remembered with an HttpOnly cookie for 30 days.
 - **Public demo:** logged-out visitors share a demo library (`DEMO_USERNAME`,
   default `demo`) pre-populated with One Piece and Kagurabachi. Anyone can edit
@@ -123,10 +123,15 @@ The app has one owner account and a shared public demo.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ADMIN_USERNAME` | `phil` | Owner login name (set once at first start). |
-| `ADMIN_PASSWORD` | `0000` | Owner password. Override on the server. Only applied while the owner has no password set. |
+| `ADMIN_USERNAME` | none | Owner login name, required only while initializing a database without an owner. |
+| `ADMIN_PASSWORD` | none | Owner password of at least 12 characters, required only while initializing a database without an owner. |
 | `DEMO_USERNAME` | `demo` | Username of the shared demo account. |
-| `SESSION_SECRET` | auto | HMAC secret for session cookies. Auto-generated and persisted to `data/session-secret` if unset. |
+| `SESSION_SECRET` | none | Required high-entropy session secret of at least 32 characters. Changing it revokes all sessions. |
+| `PUBLIC_ORIGIN` | none | Required browser origin, for example `https://philippeho.dev`; unsafe API requests from any other origin are rejected. |
+
+To rotate the current owner password without placing it in shell history, pipe it on
+standard input: `npm run reset-owner-password`. The command updates only owner row 1
+and never prints the supplied password.
 
 ## Configuration
 

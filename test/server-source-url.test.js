@@ -8,8 +8,8 @@ const http = require('node:http');
 async function loginAsOwner(baseUrl) {
   const response = await fetch(`${baseUrl}/api/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'phil', password: '0000' })
+    headers: { 'Content-Type': 'application/json', Origin: 'https://manga.example.test' },
+    body: JSON.stringify({ username: 'phil', password: 'correct-horse-battery' })
   });
   return (response.headers.get('set-cookie') || '').split(';')[0];
 }
@@ -52,14 +52,14 @@ test('PATCH /api/manga/:id/source validates and saves source URLs', async () => 
 
     let response = await fetch(`${baseUrl}/api/manga/test-source-manga/source`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: 'https://manga.example.test' },
       body: JSON.stringify({ sourceUrl: 'ftp://example.com/invalid' })
     });
     assert.equal(response.status, 400);
 
     response = await fetch(`${baseUrl}/api/manga/test-source-manga/source`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: 'https://manga.example.test' },
       body: JSON.stringify({ sourceUrl: 'https://example.com/read-here' })
     });
     assert.equal(response.status, 200);
@@ -68,7 +68,7 @@ test('PATCH /api/manga/:id/source validates and saves source URLs', async () => 
 
     response = await fetch(`${baseUrl}/api/manga/test-source-manga/source`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: 'https://manga.example.test' },
       body: JSON.stringify({ sourceUrl: '' })
     });
     assert.equal(response.status, 200);
