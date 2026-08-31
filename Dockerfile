@@ -30,4 +30,4 @@ RUN mkdir -p /app/data && chown -R node:node /app/data
 
 USER node
 EXPOSE 3001
-CMD ["node", "server.js"]
+CMD ["node", "dist/src/server/index.js"]
