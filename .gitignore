@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+dist/
 
 # Database files (SQLite)
 data/*.db
@@ -8,9 +9,6 @@ data/*.db-wal
 *.db
 *.db-shm
 *.db-wal
-
-# Session secret (auto-generated, never commit)
-data/session-secret
 
 # Logs
 *.log

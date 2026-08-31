@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MANGA TRACKER</title>
+  <link rel="stylesheet" href="/styles.css">
+  <meta name="description" content="Track your favorite manga and stay updated with new chapters">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <h1 class="title">MANGA TRACKER</h1>
+        <div class="auth-control" id="auth-control"></div>
+      </div>
+      <div class="header-line"></div>
+      <div class="demo-banner" id="demo-banner" hidden>
+        PUBLIC DEMO — READ ONLY. Sign in or request an account to manage your own library.
+      </div>
+    </header>
+
+    <!-- Search Section -->
+    <section class="search-section">
+      <h2 class="section-title">SEARCH</h2>
+      <div class="search-bar">
+        <input 
+          type="text" 
+          id="search-input" 
+          class="search-input" 
+          placeholder="Enter manga title..."
+        >
+        <button id="search-button" class="btn btn-primary">SEARCH</button>
+      </div>
+      <div id="search-results" class="search-results"></div>
+    </section>
+
+    <!-- Tracked Manga Section -->
+    <section class="tracked-section">
+      <div class="library-header">
+        <h2 class="section-title">YOUR LIBRARY</h2>
+        <div class="library-controls">
+          <div class="next-check-timer" id="next-check-timer">
+            Next check: <span id="timer-display">--:--:--</span>
+          </div>
+          <button class="btn-refresh" id="refresh-btn" title="Refresh all manga">
+            <span class="refresh-icon">↻</span>
+          </button>
+        </div>
+      </div>
+      <div class="header-palette-panel" hidden>
+        <span class="palette-label">HEADER COLOR</span>
+        <div id="header-palette" class="header-palette" aria-label="Choose a header color"></div>
+      </div>
+      <div id="manga-list" class="manga-grid"></div>
+    </section>
+  </div>
+
+  <!-- Custom Confirmation Modal -->
+  <div id="confirm-modal" class="modal">
+    <div class="modal-content">
+      <h3 class="modal-title">REMOVE MANGA?</h3>
+      <p id="modal-message" class="modal-message"></p>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn btn-secondary">CANCEL</button>
+        <button id="modal-confirm" class="btn btn-primary">REMOVE</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="source-modal" class="modal">
+    <div class="modal-content">
+      <h3 class="modal-title">READING SITE</h3>
+      <p id="source-modal-message" class="modal-message"></p>
+      <label for="source-url-input" class="modal-label">Website URL</label>
+      <input
+        type="url"
+        id="source-url-input"
+        class="modal-input"
+        placeholder="https://example.com/manga"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <p id="source-modal-error" class="modal-error" hidden></p>
+      <div class="modal-actions">
+        <button id="source-modal-cancel" class="btn btn-secondary">CANCEL</button>
+        <button id="source-modal-clear" class="btn btn-secondary">CLEAR</button>
+        <button id="source-modal-save" class="btn btn-primary">SAVE</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="login-modal" class="modal">
+    <div class="modal-content">
+      <h3 class="modal-title">SIGN IN</h3>
+      <label for="login-username" class="modal-label">Username</label>
+      <input type="text" id="login-username" class="modal-input" autocomplete="username" spellcheck="false">
+      <label for="login-password" class="modal-label">Password</label>
+      <input type="password" id="login-password" class="modal-input" autocomplete="current-password">
+      <p id="login-error" class="modal-error" hidden></p>
+      <div class="modal-actions">
+        <button id="login-cancel" class="btn btn-secondary">CANCEL</button>
+        <button id="request-open" class="btn btn-secondary">REQUEST ACCOUNT</button>
+        <button id="login-submit" class="btn btn-primary">SIGN IN</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="request-modal" class="modal">
+    <div class="modal-content">
+      <h3 class="modal-title">REQUEST ACCOUNT</h3>
+      <label for="request-username" class="modal-label">Username</label>
+      <input type="text" id="request-username" class="modal-input" autocomplete="username" spellcheck="false">
+      <label for="request-email" class="modal-label">Email</label>
+      <input type="email" id="request-email" class="modal-input" autocomplete="email">
+      <label for="request-password" class="modal-label">Password (12+ characters)</label>
+      <input type="password" id="request-password" class="modal-input" autocomplete="new-password">
+      <p id="request-message" class="modal-error" hidden></p>
+      <div class="modal-actions">
+        <button id="request-cancel" class="btn btn-secondary">CANCEL</button>
+        <button id="request-submit" class="btn btn-primary">SUBMIT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="password-modal" class="modal">
+    <div class="modal-content">
+      <h3 class="modal-title">CHANGE PASSWORD</h3>
+      <p id="password-required-message" class="modal-message" hidden>A password change is required before continuing.</p>
+      <label for="current-password" class="modal-label">Current password</label>
+      <input type="password" id="current-password" class="modal-input" autocomplete="current-password">
+      <label for="new-password" class="modal-label">New password (12+ characters)</label>
+      <input type="password" id="new-password" class="modal-input" autocomplete="new-password">
+      <p id="password-error" class="modal-error" hidden></p>
+      <div class="modal-actions">
+        <button id="password-cancel" class="btn btn-secondary">CANCEL</button>
+        <button id="password-submit" class="btn btn-primary">CHANGE PASSWORD</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/client/main.ts"></script>
+</body>
+</html>
