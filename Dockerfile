@@ -1,28 +1,33 @@
 # syntax=docker/dockerfile:1
 
-# ---- Builder: compile native deps (better-sqlite3) ----
-FROM node:22-alpine AS builder
+# ---- Builder ----
+FROM node:24-alpine AS builder
 WORKDIR /app
-# Build toolchain required to compile better-sqlite3 on musl/alpine.
 RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:24-alpine AS production-dependencies
+WORKDIR /app
+RUN apk add --no-cache python3 make g++
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
 # ---- Runtime ----
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3001 \
-    BASE_PATH=/manga-tracker \
     MANGA_TRACKER_DATA_DIR=/app/data
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY . .
+COPY --from=production-dependencies /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY package.json ./package.json
 
-# Persistent SQLite database lives here. Coolify bind-mounts a host directory
-# over /app/data so the tracker state survives redeploys.
 RUN mkdir -p /app/data && chown -R node:node /app/data
 
 USER node
 EXPOSE 3001
-CMD ["node", "server.js"]
+CMD ["node", "dist/src/server/index.js"]
