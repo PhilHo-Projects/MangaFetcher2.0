@@ -5,7 +5,9 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
-RUN npm ci
+# Coolify supplies NODE_ENV=production as a build argument. Explicitly retain
+# the TypeScript/Vite toolchain in this builder stage; runtime stays prod-only.
+RUN npm ci --include=dev
 COPY . .
 RUN npm run build
 
