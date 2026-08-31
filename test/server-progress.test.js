@@ -8,8 +8,8 @@ const http = require('node:http');
 async function loginAsOwner(baseUrl) {
   const response = await fetch(`${baseUrl}/api/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'phil', password: '0000' })
+    headers: { 'Content-Type': 'application/json', Origin: 'https://manga.example.test' },
+    body: JSON.stringify({ username: 'phil', password: 'correct-horse-battery' })
   });
   return (response.headers.get('set-cookie') || '').split(';')[0];
 }
@@ -140,7 +140,7 @@ test('search route returns normalized MangaUpdates results and read route advanc
 
     response = await fetch(`${baseUrl}/api/read`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: 'https://manga.example.test' },
       body: JSON.stringify({ mangaId: 'legacy-eleceed', chapterNumber: '397' })
     });
     assert.equal(response.status, 200);
@@ -225,7 +225,7 @@ test('track route seeds the latest three chapters as initial unread backlog for 
 
     const response = await fetch(`${baseUrl}/api/track`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: 'https://manga.example.test' },
       body: JSON.stringify({ mangaId: '114563652', title: 'Nano Machine', coverUrl: '' })
     });
     assert.equal(response.status, 200);

@@ -11,12 +11,8 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: 3001,
       BASE_PATH: '/manga-tracker'
-      // Auth — override ADMIN_PASSWORD on the server for real security.
-      // ADMIN_USERNAME: 'phil',
-      // ADMIN_PASSWORD: '0000',
-      // DEMO_USERNAME: 'demo',
-      // SESSION_SECRET is auto-generated and persisted to data/session-secret
-      // if not set here.
+      // Required auth values are injected by the production environment:
+      // PUBLIC_ORIGIN, SESSION_SECRET, and bootstrap-only ADMIN_* when needed.
     }
   }]
 };

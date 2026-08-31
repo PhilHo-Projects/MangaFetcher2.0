@@ -16,7 +16,7 @@ function cleanup(tempDir) {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
-test('db init seeds owner (user 1 = phil, role owner) with a usable password', () => {
+test('db init seeds owner from explicit credentials', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'manga-auth-seed-test-'));
   const dbModule = loadFreshDb(tempDir);
   const { verifyPassword } = require('../password');
@@ -25,7 +25,8 @@ test('db init seeds owner (user 1 = phil, role owner) with a usable password', (
     const owner = dbModule.getUser(1);
     assert.equal(owner.username, 'phil');
     assert.equal(owner.role, 'owner');
-    assert.equal(verifyPassword('0000', owner.password_hash), true);
+    assert.equal(verifyPassword('correct-horse-battery', owner.password_hash), true);
+    assert.equal(verifyPassword('0000', owner.password_hash), false);
   } finally {
     dbModule.closeDatabase();
     cleanup(tempDir);

@@ -171,6 +171,12 @@ try {
       detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, manga_id, chapter_number)
     );
+
+    CREATE TABLE IF NOT EXISTS login_rate_limits (
+      address TEXT PRIMARY KEY,
+      window_started_at INTEGER NOT NULL,
+      failure_count INTEGER NOT NULL
+    );
   `);
 
   ensureColumn('tracked_manga', 'source_url', 'TEXT');
@@ -250,16 +256,22 @@ function getUserByUsername(username) {
 }
 
 function seedAccounts() {
-  const adminUsername = String(process.env.ADMIN_USERNAME || 'phil').trim() || 'phil';
-  const adminPassword = process.env.ADMIN_PASSWORD || '0000';
+  const adminUsername = String(process.env.ADMIN_USERNAME || '').trim();
+  const adminPassword = process.env.ADMIN_PASSWORD;
   const demoUsername = String(process.env.DEMO_USERNAME || 'demo').trim() || 'demo';
 
   const owner = db.prepare('SELECT * FROM users WHERE id = 1').get();
   if (owner) {
     if (!owner.username || owner.username === 'default_user') {
+      if (!adminUsername) {
+        throw new Error('ADMIN_USERNAME is required to initialize the owner account');
+      }
       db.prepare('UPDATE users SET username = ? WHERE id = 1').run(adminUsername);
     }
     if (!owner.password_hash) {
+      if (typeof adminPassword !== 'string' || adminPassword.length < 12) {
+        throw new Error('ADMIN_PASSWORD of at least 12 characters is required to initialize the owner account');
+      }
       db.prepare('UPDATE users SET password_hash = ? WHERE id = 1').run(hashPassword(adminPassword));
     }
     db.prepare("UPDATE users SET role = 'owner' WHERE id = 1").run();
@@ -272,6 +284,52 @@ function seedAccounts() {
   } else if (demo.role !== 'demo') {
     db.prepare("UPDATE users SET role = 'demo' WHERE id = ?").run(demo.id);
   }
+}
+
+const LOGIN_LIMIT_MAX_FAILURES = 5;
+const LOGIN_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+
+function isLoginBlocked(address, now = Date.now()) {
+  const row = db.prepare(`
+    SELECT window_started_at, failure_count
+    FROM login_rate_limits
+    WHERE address = ?
+  `).get(String(address));
+
+  if (!row || row.window_started_at + LOGIN_LIMIT_WINDOW_MS <= now) {
+    return false;
+  }
+  return row.failure_count >= LOGIN_LIMIT_MAX_FAILURES;
+}
+
+const recordLoginFailureTransaction = db.transaction((address, now) => {
+  const key = String(address);
+  const row = db.prepare(`
+    SELECT window_started_at, failure_count
+    FROM login_rate_limits
+    WHERE address = ?
+  `).get(key);
+
+  if (!row || row.window_started_at + LOGIN_LIMIT_WINDOW_MS <= now) {
+    db.prepare(`
+      INSERT INTO login_rate_limits (address, window_started_at, failure_count)
+      VALUES (?, ?, 1)
+      ON CONFLICT(address) DO UPDATE SET
+        window_started_at = excluded.window_started_at,
+        failure_count = 1
+    `).run(key, now);
+    return;
+  }
+
+  db.prepare('UPDATE login_rate_limits SET failure_count = failure_count + 1 WHERE address = ?').run(key);
+});
+
+function recordLoginFailure(address, now = Date.now()) {
+  recordLoginFailureTransaction(String(address), now);
+}
+
+function clearLoginFailures(address) {
+  db.prepare('DELETE FROM login_rate_limits WHERE address = ?').run(String(address));
 }
 
 function updateTrackedMangaRecord(userId, mangaId, options = {}) {
@@ -917,6 +975,9 @@ module.exports = {
   clearUnreadBacklogThroughChapter,
   advanceProgressToChapter,
   getUserStats,
+  isLoginBlocked,
+  recordLoginFailure,
+  clearLoginFailures,
   vacuum,
   closeDatabase
 };

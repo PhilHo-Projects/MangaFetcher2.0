@@ -1,6 +1,7 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
+const { loadConfig } = require('./config');
+const CONFIG = loadConfig(process.env);
 const { searchSeries, getSeriesDetails } = require('./mangaupdates');
 const {
   trackManga,
@@ -11,7 +12,10 @@ const {
   advanceProgressToChapter,
   markChapterUnread,
   updateMangaSourceUrl,
-  getUserByUsername
+  getUserByUsername,
+  isLoginBlocked,
+  recordLoginFailure,
+  clearLoginFailures
 } = require('./db');
 const { getChaptersForManga, getTrackedMangaWithChapters } = require('./chapter-service');
 const { scheduleChapterCheck, checkForNewChapters, getNextCheckTime } = require('./scheduler');
@@ -21,7 +25,6 @@ const { attachUser, requireOwner, setSessionCookie, clearSessionCookie } = requi
 const { ensureDemoSeeded } = require('./demo');
 
 const BASE_PATH = process.env.BASE_PATH || '';
-const ENABLE_CORS = process.env.ENABLE_CORS === 'true';
 const staticDir = path.join(__dirname, 'public');
 const INITIAL_TRACK_PREVIEW_COUNT = 3;
 
@@ -60,10 +63,16 @@ function buildChapterRange(start, end) {
 
 function createApp() {
   const app = express();
+  app.set('trust proxy', 1);
 
-  if (ENABLE_CORS) {
-    app.use(cors());
-  }
+  app.use((req, res, next) => {
+    const isApi = req.path.startsWith(BASE_PATH + '/api/');
+    const isUnsafe = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    if (isApi && isUnsafe && req.get('origin') !== CONFIG.publicOrigin) {
+      return res.status(403).json({ error: 'Request origin is not allowed' });
+    }
+    next();
+  });
 
   app.use(express.json({ limit: '32kb' }));
 
@@ -86,6 +95,12 @@ function createApp() {
   });
 
   app.post(BASE_PATH + '/api/login', (req, res) => {
+    const address = req.ip || req.socket.remoteAddress || 'unknown';
+    if (isLoginBlocked(address)) {
+      res.set('Retry-After', String(15 * 60));
+      return res.status(429).json({ error: 'Too many login attempts' });
+    }
+
     const username = getTrimmedString(req.body.username);
     const password = typeof req.body.password === 'string' ? req.body.password : '';
 
@@ -95,9 +110,11 @@ function createApp() {
 
     const user = getUserByUsername(username);
     if (!user || user.role === 'demo' || !verifyPassword(password, user.password_hash)) {
+      recordLoginFailure(address);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    clearLoginFailures(address);
     setSessionCookie(res, user.id, BASE_PATH);
     res.json({ success: true, username: user.username, role: user.role });
   });

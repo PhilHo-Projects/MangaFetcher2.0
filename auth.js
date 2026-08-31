@@ -1,38 +1,12 @@
 const crypto = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
 const db = require('./db');
+const { loadConfig } = require('./config');
 
 const SESSION_COOKIE_NAME = 'mt_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-function resolveSessionSecret(dataDir) {
-  if (process.env.SESSION_SECRET) {
-    return process.env.SESSION_SECRET;
-  }
-
-  const secretPath = path.join(dataDir, 'session-secret');
-  try {
-    if (fs.existsSync(secretPath)) {
-      const existing = fs.readFileSync(secretPath, 'utf8').trim();
-      if (existing) {
-        return existing;
-      }
-    }
-  } catch (error) {
-    console.error('Could not read session secret:', error.message);
-  }
-
-  const generated = crypto.randomBytes(32).toString('hex');
-  try {
-    fs.writeFileSync(secretPath, generated, { mode: 0o600 });
-  } catch (error) {
-    console.error('Could not persist session secret:', error.message);
-  }
-  return generated;
-}
-
-const SECRET = resolveSessionSecret(db.dataDir);
+const CONFIG = loadConfig(process.env);
+const SECRET = CONFIG.sessionSecret;
 
 function createSessionToken(userId, secret, ttlMs = SESSION_TTL_MS) {
   const encodedUserId = Buffer.from(String(userId)).toString('base64url');
