@@ -28,10 +28,10 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
-    "axios": "^1.12.2",
+    "axios": "^1.20.0",
     "better-auth": "1.7.1",
-    "better-sqlite3": "^12.4.1",
-    "express": "^5.1.0",
+    "better-sqlite3": "^12.11.1",
+    "express": "^5.2.1",
     "helmet": "^8.1.0",
     "zod": "^4.4.3"
   },
