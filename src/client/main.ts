@@ -437,11 +437,16 @@ function bindUi(): void {
   });
 }
 
+async function initializeLibrary(): Promise<void> {
+  await loadSession();
+  await Promise.all([loadLibrary(), startTimer()]);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   if (window.location.pathname === '/admin') {
     void renderAdmin();
     return;
   }
   bindUi();
-  void Promise.all([loadSession(), loadLibrary(), startTimer()]);
+  void initializeLibrary();
 });

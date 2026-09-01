@@ -10,6 +10,10 @@ afterEach(() => {
 
 describe('library action controls', () => {
   it('renders compact accessible icons instead of overflowing action text', async () => {
+    let releaseSession!: () => void;
+    const delayedSession = new Promise<void>((resolve) => {
+      releaseSession = resolve;
+    });
     document.body.innerHTML = `
       <section><input id="search-input"><button id="search-button"></button></section>
       <button id="refresh-btn"></button>
@@ -25,6 +29,7 @@ describe('library action controls', () => {
 
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
+      if (path === '/api/me') await delayedSession;
       const data = path === '/api/me'
         ? { user: { id: 'owner', username: 'phil', role: 'owner', approvalStatus: 'approved', mustChangePassword: false } }
         : path === '/api/manga'
@@ -48,14 +53,18 @@ describe('library action controls', () => {
 
     await import('../src/client/main.js');
     document.dispatchEvent(new Event('DOMContentLoaded'));
+    await Promise.resolve();
+    await Promise.resolve();
+    releaseSession();
 
-    await vi.waitFor(() => expect(document.querySelector('.manga-card')).not.toBeNull());
+    await vi.waitFor(() => expect(document.querySelector('.auth-user')).not.toBeNull());
 
     for (const selector of ['.btn-source', '.btn-remove', '.btn-clear']) {
       const button = document.querySelector<HTMLButtonElement>(selector);
-      expect(button?.querySelector('svg')).not.toBeNull();
-      expect(button?.textContent?.trim()).toBe('');
-      expect(button?.getAttribute('aria-label')).toBeTruthy();
+      expect(button, `${selector} should render after the authenticated session loads`).not.toBeNull();
+      expect(button!.querySelector('svg')).not.toBeNull();
+      expect(button!.textContent.trim()).toBe('');
+      expect(button!.getAttribute('aria-label')).toBeTruthy();
     }
   });
 });
