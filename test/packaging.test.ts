@@ -12,4 +12,9 @@ describe('production packaging', () => {
     expect(dockerfile).toContain('CMD ["node", "dist/src/server/index.js"]');
     expect(dockerfile).not.toContain('server.js"]');
   });
+
+  it('keeps client-controlled hidden elements out of the rendered layout', () => {
+    const stylesheet = readFileSync('public/styles.css', 'utf8');
+    expect(stylesheet).toMatch(/\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+  });
 });
