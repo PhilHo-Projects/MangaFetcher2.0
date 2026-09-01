@@ -1,5 +1,7 @@
 /** @vitest-environment jsdom */
 
+import { readFileSync } from 'node:fs';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 afterEach(() => {
@@ -14,6 +16,7 @@ describe('library action controls', () => {
     const delayedSession = new Promise<void>((resolve) => {
       releaseSession = resolve;
     });
+    document.head.innerHTML = `<style>${readFileSync('public/styles.css', 'utf8')}</style>`;
     document.body.innerHTML = `
       <section><input id="search-input"><button id="search-button"></button></section>
       <button id="refresh-btn"></button>
@@ -66,5 +69,8 @@ describe('library action controls', () => {
       expect(button!.textContent.trim()).toBe('');
       expect(button!.getAttribute('aria-label')).toBeTruthy();
     }
+
+    const clearButton = document.querySelector<HTMLButtonElement>('.btn-clear')!;
+    expect(getComputedStyle(clearButton).borderTopStyle).toBe('solid');
   });
 });
