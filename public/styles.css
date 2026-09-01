@@ -338,12 +338,19 @@ body {
 }
 
 .btn-clear {
+  appearance: none;
+  -webkit-appearance: none;
   background: #fb7185;
   color: var(--black);
+  border-width: var(--border-thin);
+  border-style: solid;
+  border-color: var(--black);
   min-width: 44px;
   width: 44px;
   height: 36px;
   padding: 0;
+  cursor: pointer;
+  line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
