@@ -1,4 +1,25 @@
+import '@fontsource/archivo-black/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-500.css';
+import '@fontsource/ibm-plex-mono/latin-700.css';
+
 import type { MeResponse, PublicUser } from '../shared/contracts.js';
+
+const ACTION_ICONS = {
+  source: `
+    <svg viewBox="0 0 20 20" aria-hidden="true" class="header-chip-icon">
+      <path d="M13.25 3.25L16.75 6.75L7.25 16.25L3.5 16.5L3.75 12.75L13.25 3.25Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter"></path>
+      <path d="M11.75 4.75L15.25 8.25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"></path>
+    </svg>`,
+  clear: `
+    <svg viewBox="0 0 20 20" aria-hidden="true" class="header-chip-icon header-chip-icon-clear">
+      <path d="M5 5L15 15M15 5L5 15" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"></path>
+    </svg>`,
+  remove: `
+    <svg viewBox="0 0 20 20" aria-hidden="true" class="header-chip-icon header-chip-icon-remove">
+      <path d="M4.5 6.5H15.5M7 6.5V5.25C7 4.56 7.56 4 8.25 4H11.75C12.44 4 13 4.56 13 5.25V6.5M6.5 6.5L7.25 15H12.75L13.5 6.5M8.5 9V13.5M11.5 9V13.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter"></path>
+    </svg>`,
+} as const;
 
 type SearchResult = {
   id: string;
@@ -124,9 +145,10 @@ function formatDate(value: string | null): string {
 }
 
 function renderManga(manga: Manga): string {
+  const sourceLabel = manga.source_url ? 'Edit reading site' : 'Set reading site';
   const mutationControls = user
-    ? `<button class="btn-source" data-action="source" title="Set reading site">EDIT SITE</button>
-       <button class="btn-remove" data-action="remove" title="Remove from library">REMOVE</button>`
+    ? `<button class="btn-source" data-action="source" title="${sourceLabel}" aria-label="${sourceLabel}">${ACTION_ICONS.source}</button>
+       <button class="btn-remove" data-action="remove" title="Remove from library" aria-label="Remove from library">${ACTION_ICONS.remove}</button>`
     : '';
   const title = manga.source_url
     ? `<a href="${escapeHtml(manga.source_url)}" target="_blank" rel="noopener noreferrer" class="manga-title manga-title-link">${escapeHtml(manga.manga_title)}</a>`
@@ -141,7 +163,7 @@ function renderManga(manga: Manga): string {
               <span class="chapter-date">${escapeHtml(formatDate(chapter.attributes.createdAt ?? chapter.attributes.publishAt))}</span>
               ${
                 user
-                  ? '<button class="btn-small btn-clear" data-action="read" title="Clear through this chapter">CLEAR</button>'
+                  ? `<button class="btn-small btn-clear" data-action="read" title="Clear chapters through this one" aria-label="Clear chapters through this one">${ACTION_ICONS.clear}</button>`
                   : ''
               }
             </div>`,
