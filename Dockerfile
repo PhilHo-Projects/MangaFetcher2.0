@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Builder ----
-FROM node:24-alpine AS builder
+FROM node:24.22.0-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
@@ -11,14 +11,14 @@ RUN npm ci --include=dev
 COPY . .
 RUN npm run build
 
-FROM node:24-alpine AS production-dependencies
+FROM node:24.22.0-alpine AS production-dependencies
 WORKDIR /app
 RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # ---- Runtime ----
-FROM node:24-alpine AS runtime
+FROM node:24.22.0-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3001 \
