@@ -31,7 +31,7 @@ describe('library action controls', () => {
     `;
 
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
+      const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (path === '/api/me') await delayedSession;
       const data = path === '/api/me'
         ? { user: { id: 'owner', username: 'phil', role: 'owner', approvalStatus: 'approved', mustChangePassword: false } }

@@ -14,7 +14,7 @@
     "useUnknownInCatchVariables": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "vite/client", "vitest/globals"]
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts", "vite.config.ts", "vitest.config.ts"]
 }
