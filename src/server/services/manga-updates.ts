@@ -65,7 +65,8 @@ export class MangaUpdatesProvider implements MangaProvider {
       type: typeof record.type === 'string' ? record.type : '',
       status: typeof record.status === 'string' ? record.status : '',
       latestChapter: chapterNumber(record.latest_chapter),
-      imageUrl: image?.url?.thumb ?? image?.url?.original ?? '',
+      // The library shows covers large, so the tracked copy uses the full-size image.
+      imageUrl: image?.url?.original ?? image?.url?.thumb ?? '',
     };
   }
 }
