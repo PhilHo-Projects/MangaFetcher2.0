@@ -27,3 +27,7 @@ Examples/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Static design prototypes and local preview config
+prototypes/
+.claude/

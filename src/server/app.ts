@@ -270,7 +270,7 @@ export function createApp(options: CreateAppOptions): express.Express {
       repository.track(state.appUser.id, {
         mangaId: input.mangaId,
         title: input.title || details.title,
-        coverUrl: input.coverUrl ?? details.imageUrl,
+        coverUrl: input.coverUrl || details.imageUrl,
         sourceUrl: input.sourceUrl ?? '',
         latestChapterNumber: details.latestChapter,
         lastReadChapterNumber: lastRead,

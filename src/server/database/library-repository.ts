@@ -279,6 +279,12 @@ export class LibraryRepository {
     return row.chapter;
   }
 
+  updateCover(userId: number, mangaId: string, coverUrl: string): void {
+    this.database
+      .prepare('UPDATE tracked_manga SET cover_url = ? WHERE user_id = ? AND manga_id = ?')
+      .run(coverUrl, userId, mangaId);
+  }
+
   updateLatest(userId: number, mangaId: string, latestChapter: number): void {
     this.database
       .prepare('UPDATE tracked_manga SET latest_chapter_number = ? WHERE user_id = ? AND manga_id = ?')

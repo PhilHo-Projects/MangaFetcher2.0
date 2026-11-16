@@ -3,142 +3,164 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MANGA TRACKER</title>
+  <title>Manga Tracker</title>
+  <link rel="preload" href="/fonts/dela-gothic-one.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
-  <meta name="description" content="Track your favorite manga and stay updated with new chapters">
+  <meta name="description" content="Track manga series and see which chapters you have not read yet">
 </head>
 <body>
-  <div class="container">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-top">
-        <h1 class="title">MANGA TRACKER</h1>
-        <div class="auth-control" id="auth-control"></div>
-      </div>
-      <div class="header-line"></div>
-      <div class="demo-banner" id="demo-banner" hidden>
-        PUBLIC DEMO — READ ONLY. Sign in or request an account to manage your own library.
-      </div>
-    </header>
+  <header class="masthead">
+    <div class="wrap masthead-row">
+      <a class="brand" href="/">Manga Tracker</a>
+      <span class="next-check" id="next-check" hidden>Next check <span id="timer-display"></span></span>
+      <div class="auth-control" id="auth-control"></div>
+    </div>
+  </header>
 
-    <!-- Search Section -->
-    <section class="search-section">
-      <h2 class="section-title">SEARCH</h2>
-      <div class="search-bar">
-        <input 
-          type="text" 
-          id="search-input" 
-          class="search-input" 
-          placeholder="Enter manga title..."
-        >
-        <button id="search-button" class="btn btn-primary">SEARCH</button>
-      </div>
-      <div id="search-results" class="search-results"></div>
+  <main class="wrap">
+    <div class="intro">
+      <h1 id="headline">Loading library</h1>
+      <p id="subline"></p>
+    </div>
+
+    <p class="notice" id="demo-banner" hidden>
+      This is a read-only demo library. Sign in or request an account to track your own.
+    </p>
+
+    <div class="toolbar">
+      <label class="filter">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5.5 5.5"/></svg>
+        <input id="filter" type="search" placeholder="Filter titles" aria-label="Filter titles" autocomplete="off" spellcheck="false">
+        <kbd aria-hidden="true">/</kbd>
+      </label>
+      <button id="refresh-btn" type="button" class="btn" hidden>Check now</button>
+      <button id="track-open" type="button" class="btn btn-ink" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg>
+        Track manga
+      </button>
+    </div>
+
+    <section id="manga-list" class="queue" aria-label="Unread chapters"></section>
+
+    <section id="shelf-section" class="shelf-section" aria-labelledby="shelf-heading" hidden>
+      <h2 id="shelf-heading">Caught up <span id="shelf-count" class="count"></span></h2>
+      <ul id="shelf" class="shelf"></ul>
     </section>
+  </main>
 
-    <!-- Tracked Manga Section -->
-    <section class="tracked-section">
-      <div class="library-header">
-        <h2 class="section-title">YOUR LIBRARY</h2>
-        <div class="library-controls">
-          <div class="next-check-timer" id="next-check-timer">
-            Next check: <span id="timer-display">--:--:--</span>
-          </div>
-          <button class="btn-refresh" id="refresh-btn" title="Refresh all manga">
-            <span class="refresh-icon">↻</span>
-          </button>
-        </div>
-      </div>
-      <div class="header-palette-panel" hidden>
-        <span class="palette-label">HEADER COLOR</span>
-        <div id="header-palette" class="header-palette" aria-label="Choose a header color"></div>
-      </div>
-      <div id="manga-list" class="manga-grid"></div>
-    </section>
-  </div>
-
-  <!-- Custom Confirmation Modal -->
-  <div id="confirm-modal" class="modal">
-    <div class="modal-content">
-      <h3 class="modal-title">REMOVE MANGA?</h3>
-      <p id="modal-message" class="modal-message"></p>
-      <div class="modal-actions">
-        <button id="modal-cancel" class="btn btn-secondary">CANCEL</button>
-        <button id="modal-confirm" class="btn btn-primary">REMOVE</button>
-      </div>
+  <dialog id="track-dialog" class="dialog dialog-wide" aria-labelledby="track-title">
+    <div class="dialog-head">
+      <h2 id="track-title">Track manga</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 14 14M19 5 5 19"/></svg>
+      </button>
     </div>
-  </div>
+    <form id="search-form" class="catalog-search" novalidate>
+      <label class="field">
+        <span>Title</span>
+        <input id="search-input" type="search" autocomplete="off" spellcheck="false">
+      </label>
+      <button id="search-button" type="submit" class="btn btn-ink">Search</button>
+    </form>
+    <div id="search-results" class="catalog" hidden></div>
+  </dialog>
 
-  <div id="source-modal" class="modal">
-    <div class="modal-content">
-      <h3 class="modal-title">READING SITE</h3>
-      <p id="source-modal-message" class="modal-message"></p>
-      <label for="source-url-input" class="modal-label">Website URL</label>
-      <input
-        type="url"
-        id="source-url-input"
-        class="modal-input"
-        placeholder="https://example.com/manga"
-        autocomplete="off"
-        spellcheck="false"
-      >
-      <p id="source-modal-error" class="modal-error" hidden></p>
-      <div class="modal-actions">
-        <button id="source-modal-cancel" class="btn btn-secondary">CANCEL</button>
-        <button id="source-modal-clear" class="btn btn-secondary">CLEAR</button>
-        <button id="source-modal-save" class="btn btn-primary">SAVE</button>
+  <dialog id="source-modal" class="dialog" aria-labelledby="source-title">
+    <form id="source-form" novalidate>
+      <div class="dialog-head"><h2 id="source-title">Reading site</h2></div>
+      <label class="field">
+        <span id="source-modal-message">Website URL</span>
+        <input id="source-url-input" type="url" placeholder="https://example.com/manga" autocomplete="off" spellcheck="false">
+      </label>
+      <p id="source-modal-error" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="source-modal-clear">Clear link</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-ink">Save link</button>
       </div>
-    </div>
-  </div>
+    </form>
+  </dialog>
 
-  <div id="login-modal" class="modal">
-    <div class="modal-content">
-      <h3 class="modal-title">SIGN IN</h3>
-      <label for="login-username" class="modal-label">Username</label>
-      <input type="text" id="login-username" class="modal-input" autocomplete="username" spellcheck="false">
-      <label for="login-password" class="modal-label">Password</label>
-      <input type="password" id="login-password" class="modal-input" autocomplete="current-password">
-      <p id="login-error" class="modal-error" hidden></p>
-      <div class="modal-actions">
-        <button id="login-cancel" class="btn btn-secondary">CANCEL</button>
-        <button id="request-open" class="btn btn-secondary">REQUEST ACCOUNT</button>
-        <button id="login-submit" class="btn btn-primary">SIGN IN</button>
+  <dialog id="confirm-modal" class="dialog" aria-labelledby="modal-message">
+    <form id="confirm-form">
+      <div class="dialog-head"><h2 id="modal-message"></h2></div>
+      <p class="dialog-text">Its reading progress is deleted with it.</p>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-danger">Remove</button>
       </div>
-    </div>
-  </div>
+    </form>
+  </dialog>
 
-  <div id="request-modal" class="modal">
-    <div class="modal-content">
-      <h3 class="modal-title">REQUEST ACCOUNT</h3>
-      <label for="request-username" class="modal-label">Username</label>
-      <input type="text" id="request-username" class="modal-input" autocomplete="username" spellcheck="false">
-      <label for="request-email" class="modal-label">Email</label>
-      <input type="email" id="request-email" class="modal-input" autocomplete="email">
-      <label for="request-password" class="modal-label">Password (12+ characters)</label>
-      <input type="password" id="request-password" class="modal-input" autocomplete="new-password">
-      <p id="request-message" class="modal-error" hidden></p>
-      <div class="modal-actions">
-        <button id="request-cancel" class="btn btn-secondary">CANCEL</button>
-        <button id="request-submit" class="btn btn-primary">SUBMIT</button>
+  <dialog id="login-modal" class="dialog" aria-labelledby="login-title">
+    <form id="login-form" novalidate>
+      <div class="dialog-head"><h2 id="login-title">Sign in</h2></div>
+      <label class="field">
+        <span>Username</span>
+        <input type="text" id="login-username" autocomplete="username" spellcheck="false">
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" id="login-password" autocomplete="current-password">
+      </label>
+      <p id="login-error" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="request-open">Request account</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-ink">Sign in</button>
       </div>
-    </div>
-  </div>
+    </form>
+  </dialog>
 
-  <div id="password-modal" class="modal">
-    <div class="modal-content">
-      <h3 class="modal-title">CHANGE PASSWORD</h3>
-      <p id="password-required-message" class="modal-message" hidden>A password change is required before continuing.</p>
-      <label for="current-password" class="modal-label">Current password</label>
-      <input type="password" id="current-password" class="modal-input" autocomplete="current-password">
-      <label for="new-password" class="modal-label">New password (12+ characters)</label>
-      <input type="password" id="new-password" class="modal-input" autocomplete="new-password">
-      <p id="password-error" class="modal-error" hidden></p>
-      <div class="modal-actions">
-        <button id="password-cancel" class="btn btn-secondary">CANCEL</button>
-        <button id="password-submit" class="btn btn-primary">CHANGE PASSWORD</button>
+  <dialog id="request-modal" class="dialog" aria-labelledby="request-title">
+    <form id="request-form" novalidate>
+      <div class="dialog-head"><h2 id="request-title">Request account</h2></div>
+      <label class="field">
+        <span>Username</span>
+        <input type="text" id="request-username" autocomplete="username" spellcheck="false">
+      </label>
+      <label class="field">
+        <span>Email</span>
+        <input type="email" id="request-email" autocomplete="email">
+      </label>
+      <label class="field">
+        <span>Password, 12 characters or more</span>
+        <input type="password" id="request-password" autocomplete="new-password">
+      </label>
+      <p id="request-message" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-ink">Send request</button>
       </div>
-    </div>
-  </div>
+    </form>
+  </dialog>
+
+  <dialog id="password-modal" class="dialog" aria-labelledby="password-title">
+    <form id="password-form" novalidate>
+      <div class="dialog-head"><h2 id="password-title">Change password</h2></div>
+      <p id="password-required-message" class="dialog-text" hidden>Change your password to continue.</p>
+      <label class="field">
+        <span>Current password</span>
+        <input type="password" id="current-password" autocomplete="current-password">
+      </label>
+      <label class="field">
+        <span>New password, 12 characters or more</span>
+        <input type="password" id="new-password" autocomplete="new-password">
+      </label>
+      <p id="password-error" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="password-cancel" data-close>Cancel</button>
+        <button type="submit" class="btn btn-ink">Change password</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden><span id="toast-text"></span></div>
 
   <script type="module" src="/src/client/main.ts"></script>
 </body>

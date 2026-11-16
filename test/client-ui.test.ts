@@ -10,67 +10,90 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('library action controls', () => {
-  it('renders compact accessible icons instead of overflowing action text', async () => {
-    let releaseSession!: () => void;
-    const delayedSession = new Promise<void>((resolve) => {
-      releaseSession = resolve;
-    });
-    document.head.innerHTML = `<style>${readFileSync('public/styles.css', 'utf8')}</style>`;
-    document.body.innerHTML = `
-      <section><input id="search-input"><button id="search-button"></button></section>
-      <button id="refresh-btn"></button>
-      <div id="auth-control"></div>
-      <div id="demo-banner"></div>
-      <div id="search-results"></div>
-      <div id="manga-list"></div>
-      <span id="timer-display"></span>
-      <button id="login-submit"></button><button id="login-cancel"></button>
-      <button id="request-open"></button><button id="request-cancel"></button><button id="request-submit"></button>
-      <button id="password-cancel"></button><button id="password-submit"></button>
-    `;
+type SessionUser = { id: string; username: string; role: string; approvalStatus: string; mustChangePassword: boolean };
 
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (path === '/api/me') await delayedSession;
-      const data = path === '/api/me'
-        ? { user: { id: 'owner', username: 'phil', role: 'owner', approvalStatus: 'approved', mustChangePassword: false } }
-        : path === '/api/manga'
-          ? [{
-              manga_id: 'test-manga',
-              manga_title: 'Test Manga',
-              source_url: '',
-              migration_status: null,
-              unreadCount: 1,
-              chapters: [{
-                id: 'chapter-1',
-                attributes: { chapter: '1', createdAt: '2026-08-31T00:00:00.000Z', publishAt: null },
-              }],
-            }]
-          : { nextCheck: null };
-      return new Response(JSON.stringify({ data }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+const library = [
+  {
+    id: 1,
+    manga_id: 'unread-manga',
+    manga_title: 'Unread Manga',
+    cover_url: '',
+    source_url: '',
+    lastReadChapter: 10,
+    latestChapter: 12,
+    unreadCount: 2,
+    chapters: [
+      { id: 'c12', attributes: { chapter: '12', createdAt: '2026-08-31T00:00:00.000Z', publishAt: null } },
+      { id: 'c11', attributes: { chapter: '11', createdAt: '2026-08-24T00:00:00.000Z', publishAt: null } },
+    ],
+  },
+  {
+    id: 2,
+    manga_id: 'read-manga',
+    manga_title: 'Read Manga',
+    cover_url: 'https://covers.example/read.jpg',
+    source_url: 'https://reader.example/read',
+    lastReadChapter: 40,
+    latestChapter: 40,
+    unreadCount: 0,
+    chapters: [],
+  },
+];
+
+async function mount(user: SessionUser | null): Promise<void> {
+  const page = readFileSync('index.html', 'utf8');
+  document.head.innerHTML = `<style>${readFileSync('public/styles.css', 'utf8')}</style>`;
+  document.body.innerHTML = /<body>([\s\S]*)<\/body>/.exec(page)![1]!.replace(/<script[\s\S]*?<\/script>/g, '');
+
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const data = path === '/api/me' ? { user, isDemo: user === null } : path === '/api/manga' ? library : { nextCheck: null };
+    return Promise.resolve(new Response(JSON.stringify({ data }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
     }));
+  }));
 
-    await import('../src/client/main.js');
-    document.dispatchEvent(new Event('DOMContentLoaded'));
-    await Promise.resolve();
-    await Promise.resolve();
-    releaseSession();
+  await import('../src/client/main.js');
+  document.dispatchEvent(new Event('DOMContentLoaded'));
+  await vi.waitFor(() => expect(document.querySelector('.panel')).not.toBeNull());
+}
 
-    await vi.waitFor(() => expect(document.querySelector('.auth-user')).not.toBeNull());
+describe('library page', () => {
+  it('gives a signed-in reader labelled controls on every unread chapter', async () => {
+    await mount({ id: 'owner', username: 'phil', role: 'owner', approvalStatus: 'approved', mustChangePassword: false });
 
-    for (const selector of ['.btn-source', '.btn-remove', '.btn-clear']) {
-      const button = document.querySelector<HTMLButtonElement>(selector);
-      expect(button, `${selector} should render after the authenticated session loads`).not.toBeNull();
-      expect(button!.querySelector('svg')).not.toBeNull();
-      expect(button!.textContent.trim()).toBe('');
-      expect(button!.getAttribute('aria-label')).toBeTruthy();
+    expect(document.getElementById('headline')!.textContent).toBe('2 chapters to read');
+    expect(document.querySelector('.auth-user')!.textContent).toBe('phil');
+    expect(document.getElementById('demo-banner')!.hidden).toBe(true);
+    expect(document.getElementById('track-open')!.hidden).toBe(false);
+    expect(document.getElementById('refresh-btn')!.hidden).toBe(false);
+
+    const rows = [...document.querySelectorAll<HTMLButtonElement>('.panel button.chapter')];
+    expect(rows.map((row) => row.dataset.chapterNumber)).toEqual(['11', '12']);
+    for (const row of rows) {
+      expect(row.getAttribute('aria-label')).toMatch(/^Mark Unread Manga read through chapter 1[12]$/);
+      expect(row.querySelector('svg')).not.toBeNull();
     }
 
-    const clearButton = document.querySelector<HTMLButtonElement>('.btn-clear')!;
-    expect(getComputedStyle(clearButton).borderTopStyle).toBe('solid');
+    const options = document.querySelector<HTMLElement>('.panel .menu summary')!;
+    expect(options.getAttribute('aria-label')).toBe('Options for Unread Manga');
+    expect(options.textContent.trim()).toBe('');
+
+    const shelf = document.getElementById('shelf')!;
+    expect(shelf.querySelectorAll('.book')).toHaveLength(1);
+    expect(shelf.querySelector('.book-cover')!.getAttribute('href')).toBe('https://reader.example/read');
+  });
+
+  it('shows the public demo without any controls that change the library', async () => {
+    await mount(null);
+
+    expect(document.getElementById('demo-banner')!.hidden).toBe(false);
+    expect(document.getElementById('track-open')!.hidden).toBe(true);
+    expect(document.getElementById('refresh-btn')!.hidden).toBe(true);
+    expect(document.querySelector('[data-action="signin"]')).not.toBeNull();
+    expect(document.querySelectorAll('.panel .chapter')).toHaveLength(2);
+    expect(document.querySelector('button.chapter')).toBeNull();
+    expect(document.querySelector('#manga-list .menu, #shelf .menu')).toBeNull();
   });
 });
