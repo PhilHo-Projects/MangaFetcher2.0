@@ -85,6 +85,17 @@ describe('library page', () => {
     expect(shelf.querySelector('.book-cover')!.getAttribute('href')).toBe('https://reader.example/read');
   });
 
+  it('swaps a cover that fails to load for the title initial', async () => {
+    await mount({ id: 'owner', username: 'phil', role: 'owner', approvalStatus: 'approved', mustChangePassword: false });
+
+    const cover = document.querySelector<HTMLElement>('#shelf .book-cover')!;
+    cover.querySelector('img')!.dispatchEvent(new Event('error'));
+
+    expect(cover.querySelector('img')).toBeNull();
+    expect(cover.classList.contains('cover-blank')).toBe(true);
+    expect(cover.textContent.trim()).toBe('R');
+  });
+
   it('shows the public demo without any controls that change the library', async () => {
     await mount(null);
 

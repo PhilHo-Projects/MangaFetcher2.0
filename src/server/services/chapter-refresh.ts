@@ -29,8 +29,9 @@ export class ChapterRefreshService {
     for (const row of rows) {
       try {
         const details = await this.provider.details(row.providerSeriesId ?? row.mangaId);
-        // Titles tracked before covers were stored get theirs on the next check.
-        if (row.coverUrl === '' && details.imageUrl !== '') {
+        // MangaUpdates deletes the old file when a series gets new cover art, so the
+        // stored URL is replaced on every check where the provider reports a different one.
+        if (details.imageUrl !== '' && details.imageUrl !== row.coverUrl) {
           this.repository.updateCover(row.userId, row.mangaId, details.imageUrl);
         }
         if (details.latestChapter !== null) {

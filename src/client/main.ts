@@ -746,6 +746,27 @@ function bindUi(): void {
     if (passwordRequired) event.preventDefault();
   });
 
+  // A cover that fails to load shows the title's initial instead of a broken image.
+  // Error events do not bubble, so this listens in the capture phase.
+  document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement) || !img.parentElement) return;
+    const title = img.closest('.manga-card, .search-result-item')
+      ?.querySelector('h2, .book-meta strong, .search-result-title')?.textContent ?? '';
+    const initial = document.createElement('span');
+    initial.setAttribute('aria-hidden', 'true');
+    initial.textContent = title.trim().charAt(0).toUpperCase();
+    if (img.parentElement.matches('.panel-cover, .book-cover')) {
+      img.parentElement.classList.add('cover-blank');
+      img.replaceWith(initial);
+    } else {
+      const blank = document.createElement('div');
+      blank.className = 'cover-blank';
+      blank.append(initial);
+      img.replaceWith(blank);
+    }
+  }, true);
+
   document.addEventListener('click', (event) => {
     const target = event.target as HTMLElement;
     const openMenu = target.closest('.menu');
