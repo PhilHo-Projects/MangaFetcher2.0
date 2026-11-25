@@ -4,6 +4,8 @@ type Migration = {
   version: number;
   sql: string;
   precondition?: (database: Database.Database) => void;
+  /** Runs inside the migration's transaction, before `sql`. */
+  apply?: (database: Database.Database) => void;
 };
 
 const LEGACY_SCHEMA_SQL = `
@@ -92,6 +94,10 @@ const REQUIRED_LEGACY_COLUMNS: Record<string, readonly string[]> = {
   login_rate_limits: ['address', 'window_started_at', 'failure_count'],
 };
 
+// Better Auth's account table. Databases created before 2026-11-25 got better-auth 1.7.1's
+// version, with a required "issuer" column and a unique (issuer, accountId) index; migration 4
+// drops both. New databases never get them, because the owner identity step runs Better Auth
+// 1.7.3+ against schema 2, and it refuses to start while "issuer" is NOT NULL.
 const AUTH_SCHEMA_SQL = `
   ALTER TABLE users ADD COLUMN auth_user_id TEXT;
   CREATE UNIQUE INDEX users_auth_user_id_uidx ON users(auth_user_id);
@@ -128,7 +134,6 @@ const AUTH_SCHEMA_SQL = `
   );
   CREATE TABLE "account" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "issuer" TEXT NOT NULL,
     "accountId" TEXT NOT NULL,
     "providerId" TEXT NOT NULL,
     "userId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
@@ -174,7 +179,6 @@ const AUTH_SCHEMA_SQL = `
   CREATE INDEX session_userId_idx ON "session"("userId");
   CREATE INDEX account_userId_idx ON "account"("userId");
   CREATE INDEX verification_identifier_idx ON "verification"("identifier");
-  CREATE UNIQUE INDEX account_issuer_accountId_uidx ON "account"("issuer", "accountId");
 `;
 
 const MIGRATIONS: readonly Migration[] = [
@@ -206,6 +210,22 @@ const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE users DROP COLUMN role;
       DROP TABLE login_rate_limits;
     `,
+  },
+  {
+    // Better Auth 1.7.3+ identifies accounts by (providerId, accountId) again, never writes
+    // account.issuer, and refuses to start while it is NOT NULL. Drop the index first:
+    // SQLite will not drop a column an index still covers. Every account 1.7.1 wrote is
+    // local (issuer = 'local:' || providerId), so (providerId, accountId) is already unique;
+    // scripts/undo-auth-migration-4.sql restores the column for a rollback to 1.7.1.
+    version: 4,
+    apply(database) {
+      if (!columns(database, 'account').has('issuer')) return;
+      database.exec(`
+        DROP INDEX IF EXISTS account_issuer_accountId_uidx;
+        ALTER TABLE "account" DROP COLUMN "issuer";
+      `);
+    },
+    sql: '',
   },
 ];
 
@@ -312,7 +332,8 @@ export function migrateDatabase(
     migration.precondition?.(database);
     database.exec('BEGIN IMMEDIATE');
     try {
-      database.exec(migration.sql);
+      migration.apply?.(database);
+      if (migration.sql) database.exec(migration.sql);
       database
         .prepare('INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)')
         .run(migration.version, new Date().toISOString());
