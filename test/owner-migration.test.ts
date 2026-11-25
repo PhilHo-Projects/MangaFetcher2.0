@@ -61,6 +61,31 @@ describe('owner identity migration', () => {
     database.close();
   });
 
+  it('migration 4 drops the better-auth 1.7.1 account.issuer column and keeps the owner sign-in', async () => {
+    const database = legacyDatabase();
+    const auth = buildAuth({ database, config });
+    await migrateOwnerIdentity({ auth, database, bootstrap: config.ownerBootstrap });
+    migrateDatabase(database, 3);
+    // Give schema 3 the shape better-auth 1.7.1 created in production.
+    database.exec(`
+      ALTER TABLE "account" ADD COLUMN "issuer" TEXT;
+      UPDATE "account" SET "issuer" = 'local:' || "providerId";
+      CREATE UNIQUE INDEX account_issuer_accountId_uidx ON "account"("issuer", "accountId");
+    `);
+    migrateDatabase(database);
+    migrateDatabase(database);
+
+    expect(schemaVersion(database)).toBe(4);
+    const columns = database.prepare('PRAGMA table_info("account")').all() as { name: string }[];
+    expect(columns.map((column) => column.name)).not.toContain('issuer');
+    const response = await auth.api.signInUsername({
+      body: { username: 'phil', password: config.ownerBootstrap?.password ?? '' },
+      asResponse: true,
+    });
+    expect(response.status).toBe(200);
+    database.close();
+  });
+
   it('requires bootstrap credentials only until the owner identity exists', async () => {
     const database = legacyDatabase();
     const auth = buildAuth({ database, config });
